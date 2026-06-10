@@ -88,3 +88,13 @@ python web_panel.py
 4. Telefonda tarayıcı açıp PC'nin yerel IP adresine gidin:
    - Örnek: `http://192.168.1.25:5050`
 5. Panelde **Bağlantı Testi** ile yazıcı listesini çekin ve açılır listeden yazıcı seçin.
+
+## Masaüstü firma yönetimi
+- Ana uygulamada sekmeli yapı bulunur: **Tek Fiş**, **Seri Baskı**, **Firma Yönetimi**, **Ayarlar**.
+- Üst menüden **Firma Yönetimi > Firma Ekle / Seçili Firmayı Düzenle / Seçili Firmayı Sil / Toplu Firma Düzenle** işlemleri yapılabilir.
+- Firma Yönetimi sekmesindeki butonlarla firma ekleme, düzenleme, silme, kaydetme ve yeniden yükleme işlemleri yapılır.
+- Toplu Firma Düzenle formatı:
+  ```text
+  Firma Adı | Sektör | Adres | Oyun Kodu | Ürün | KDV | Tutar
+  ```
+- Termal yazıcıda temiz baskı için Türkçe karakter kullanmayın: Ç yerine C, Ğ yerine G, İ yerine I, Ş yerine S, Ü yerine U, Ö yerine O.
