@@ -54,10 +54,12 @@ Bu proje **yalnızca oyun amaçlı** gerçekçi görünümlü fiş basımı içi
 - Monospace (eşit aralıklı) görünüm esas alınmıştır.
 - RAW gönderim ile ESC/POS kesme komutu eklenir.
 
-## Güvenlik/Uyarı
-Basılan her fişin sonunda şu satırlar zorunlu olarak yer alır:
-- `*** OYUN AMACLIDIR ***`
-- `TICARI GECERLILIGI YOKTUR`
+## Fiş şablonu
+- Varsayılan temiz şablonda otomatik alt bilgi veya ticari geçerlilik uyarısı basılmaz.
+- **Fiş Şablonu** sekmesinden üst bilgi, alt bilgi, EKU No formatı, Z No, ayraç karakteri, fiş genişliği ve görünür alanlar düzenlenebilir.
+- Alt bilgi tamamen isteğe bağlıdır; boş bırakılırsa fişin altında ekstra açıklama basılmaz.
+- İsterseniz gerçekçi görünüm için `TESEKKUR EDERIZ`, `YINE BEKLERIZ`, `IYI GUNLER` gibi alt bilgi satırları yazabilirsiniz.
+- Şablon ayarları `receipt_template.json` dosyasında saklanır.
 
 
 ## Mobil uyumlu web panel (2. aşama modül)
@@ -90,7 +92,7 @@ python web_panel.py
 5. Panelde **Bağlantı Testi** ile yazıcı listesini çekin ve açılır listeden yazıcı seçin.
 
 ## Masaüstü firma yönetimi
-- Ana uygulamada sekmeli yapı bulunur: **Tek Fiş**, **Seri Baskı**, **Firma Yönetimi**, **Ayarlar**.
+- Ana uygulamada sekmeli yapı bulunur: **Tek Fiş**, **Seri Baskı**, **Firma Yönetimi**, **Fiş Şablonu**, **Ayarlar**.
 - Üst menüden **Firma Yönetimi > Firma Ekle / Seçili Firmayı Düzenle / Seçili Firmayı Sil / Toplu Firma Düzenle** işlemleri yapılabilir.
 - Firma Yönetimi sekmesindeki butonlarla firma ekleme, düzenleme, silme, kaydetme ve yeniden yükleme işlemleri yapılır.
 - Toplu Firma Düzenle formatı:

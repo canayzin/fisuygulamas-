@@ -12,13 +12,16 @@ from flask import Flask, jsonify, render_template, request
 from firm_manager import FirmManager
 from printer_service import PrinterService
 from receipt_formatter import ReceiptData, build_receipt_text
+from template_manager import TemplateManager
 
 BASE_DIR = Path(__file__).resolve().parent
 FIRMS_JSON = BASE_DIR / "firms.json"
+TEMPLATE_JSON = BASE_DIR / "receipt_template.json"
 OUTPUT_DIR = BASE_DIR / "receipts_output"
 
 app = Flask(__name__)
 firm_manager = FirmManager(FIRMS_JSON)
+template_manager = TemplateManager(TEMPLATE_JSON)
 printer_service = PrinterService()
 
 print_jobs: dict[str, dict] = {}
@@ -157,7 +160,7 @@ def api_generate():
                 amount=amount,
                 payment_type=payment,
             )
-            text = build_receipt_text(data)
+            text = build_receipt_text(data, template_manager.load())
             filename = f"receipt_{receipt_no + i:06d}.txt"
             printer_service.save_txt(OUTPUT_DIR, filename, text)
             receipts.append({"filename": filename, "text": text})
@@ -222,7 +225,7 @@ def api_print_test():
     printer_name = payload.get("printer_name", "").strip()
     if not printer_name:
         return jsonify({"error": "Yazıcı bulunamadı."}), 400
-    test_text = "TEST FISI\n\n*** OYUN AMACLIDIR ***\nTICARI GECERLILIGI YOKTUR\n"
+    test_text = "TEST FISI\nYAZICI BAGLANTI TESTI\n"
     try:
         printer_service.print_raw(printer_name, test_text)
         return jsonify({"ok": True})

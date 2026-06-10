@@ -1,0 +1,14 @@
+{
+  "header_lines": [],
+  "footer_lines": [],
+  "eku_format": "EKU NO: {game_code}",
+  "z_no": "707",
+  "separator_char": "-",
+  "width": 32,
+  "center_firm_name": true,
+  "product_line_format": "{product}",
+  "show_vat": true,
+  "show_time": true,
+  "show_receipt_no": true,
+  "show_footer": true
+}

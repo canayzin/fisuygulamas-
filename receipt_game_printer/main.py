@@ -12,9 +12,12 @@ from firm_dialog import ask_firm
 from firm_manager import Firm, FirmManager
 from printer_service import PrinterService
 from receipt_formatter import ReceiptData, build_receipt_text
+from template_editor import TemplateEditorFrame
+from template_manager import TemplateManager
 
 BASE_DIR = Path(__file__).resolve().parent
 FIRMS_JSON = BASE_DIR / "firms.json"
+TEMPLATE_JSON = BASE_DIR / "receipt_template.json"
 OUTPUT_DIR = BASE_DIR / "receipts_output"
 TURKISH_CHAR_WARNING = (
     "Gerçekçi ve temiz baskı için Türkçe karakter kullanmayın: "
@@ -31,6 +34,8 @@ class App:
 
         self.firm_manager = FirmManager(FIRMS_JSON)
         self.firms = self.firm_manager.load()
+        self.template_manager = TemplateManager(TEMPLATE_JSON)
+        self.receipt_template = self.template_manager.load()
         self.printer_service = PrinterService()
         self.stop_batch = False
         self.print_count = 0
@@ -51,6 +56,7 @@ class App:
         self.pay_var = tk.StringVar(value="NAKIT")
         self.receipt_no_var = tk.StringVar(value="1")
         self.manual_printer_var = tk.StringVar()
+        self.selected_printer_var = tk.StringVar()
 
         self.batch_count_var = tk.StringVar(value="10")
         self.mode_var = tk.StringVar(value="Sırayla")
@@ -70,6 +76,10 @@ class App:
         file_menu = tk.Menu(menu, tearoff=0)
         file_menu.add_command(label="Firmaları Kaydet", command=self.save_firms)
         file_menu.add_command(label="Firmaları Yeniden Yükle", command=self.load_firms)
+        file_menu.add_separator()
+        file_menu.add_command(label="Şablonu Kaydet", command=self.save_template)
+        file_menu.add_command(label="Şablonu Yükle", command=self.load_template)
+        file_menu.add_command(label="Varsayılan Şablona Dön", command=self.reset_template)
         file_menu.add_separator()
         file_menu.add_command(label="Çıkış", command=self.root.destroy)
         menu.add_cascade(label="Dosya", menu=file_menu)
@@ -93,15 +103,18 @@ class App:
         self.single_tab = ttk.Frame(self.notebook, padding=10)
         self.batch_tab = ttk.Frame(self.notebook, padding=10)
         self.firms_tab = ttk.Frame(self.notebook, padding=10)
+        self.template_tab = ttk.Frame(self.notebook, padding=10)
         self.settings_tab = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.single_tab, text="Tek Fiş")
         self.notebook.add(self.batch_tab, text="Seri Baskı")
         self.notebook.add(self.firms_tab, text="Firma Yönetimi")
+        self.notebook.add(self.template_tab, text="Fiş Şablonu")
         self.notebook.add(self.settings_tab, text="Ayarlar")
 
         self._build_single_tab()
         self._build_batch_tab()
         self._build_firms_tab(self.firms_tab)
+        self._build_template_tab()
         self._build_settings_tab()
 
     def _build_single_tab(self):
@@ -179,6 +192,11 @@ class App:
         ttk.Button(buttons, text="Firmaları Kaydet", command=self.save_firms).pack(fill="x", pady=(10, 2))
         ttk.Button(buttons, text="Firmaları Yükle", command=self.load_firms).pack(fill="x", pady=2)
 
+    def _build_template_tab(self):
+        self.template_editor = TemplateEditorFrame(self.template_tab, self.on_template_changed)
+        self.template_editor.pack(fill="both", expand=True)
+        self.template_editor.set_template(self.receipt_template)
+
     def _build_settings_tab(self):
         panel = ttk.LabelFrame(self.settings_tab, text="Yazıcı ve Genel Ayarlar", padding=10)
         panel.pack(fill="both", expand=True)
@@ -188,7 +206,7 @@ class App:
 
     def _build_printer_controls(self, parent):
         ttk.Label(parent, text="Windows yazıcı listesi").pack(anchor="w")
-        printer_combo = ttk.Combobox(parent, state="readonly")
+        printer_combo = ttk.Combobox(parent, textvariable=self.selected_printer_var, state="readonly")
         printer_combo.pack(fill="x")
         self.printer_combos.append(printer_combo)
         ttk.Button(parent, text="Yazıcıları Yenile", command=self._refresh_printers).pack(fill="x", pady=4)
@@ -235,11 +253,7 @@ class App:
         manual = self.manual_printer_var.get().strip()
         if manual:
             return manual
-        for combo in self.printer_combos:
-            selected = combo.get().strip()
-            if selected:
-                return selected
-        return ""
+        return self.selected_printer_var.get().strip()
 
     def _refresh_firm_list(self, selected_index: int | None = None):
         names = [firm.name for firm in self.firms]
@@ -313,7 +327,7 @@ class App:
             return
         try:
             receipt_no = int(self.receipt_no_var.get() or "1")
-            text = build_receipt_text(self._build_receipt_data(receipt_no, datetime.now()))
+            text = build_receipt_text(self._build_receipt_data(receipt_no, datetime.now()), self.receipt_template)
         except Exception:
             text = "Önizleme oluşturulamadı. Firma, tutar ve KDV alanlarını kontrol edin."
         self._set_preview_text(text)
@@ -353,7 +367,7 @@ class App:
             printer = self._validate_printer()
             receipt_no = int(self.receipt_no_var.get())
             data = self._build_receipt_data(receipt_no, datetime.now())
-            text = build_receipt_text(data)
+            text = build_receipt_text(data, self.receipt_template)
             self.printer_service.print_raw(printer, text)
             self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{receipt_no:06d}.txt", text)
             self.update_preview()
@@ -438,7 +452,7 @@ class App:
                 firm = firms[i]
                 amount = self._pick_amount(firm)
                 data = self._build_receipt_data(start_no + i, dt, firm=firm, amount=amount)
-                text = build_receipt_text(data)
+                text = build_receipt_text(data, self.receipt_template)
                 self.printer_service.print_raw(printer, text)
                 self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{start_no + i:06d}.txt", text)
                 self.print_count += 1
@@ -508,13 +522,46 @@ class App:
         self.update_preview()
         messagebox.showinfo("Yüklendi", "Firmalar yeniden yüklendi.")
 
+    def on_template_changed(self):
+        try:
+            self.receipt_template = self.template_editor.get_template()
+        except ValueError:
+            return
+        self.update_preview()
+
+    def save_template(self):
+        try:
+            self.receipt_template = self.template_editor.get_template()
+            self.template_manager.save(self.receipt_template)
+            messagebox.showinfo("Kaydedildi", "Şablon receipt_template.json dosyasına kaydedildi.")
+        except ValueError as exc:
+            messagebox.showerror("Hata", str(exc))
+        except Exception:
+            messagebox.showerror("Hata", "Şablon kaydedilemedi")
+
+    def load_template(self):
+        try:
+            self.receipt_template = self.template_manager.load()
+            self.template_editor.set_template(self.receipt_template)
+            self.update_preview()
+            messagebox.showinfo("Yüklendi", "Şablon yüklendi.")
+        except Exception:
+            messagebox.showerror("Hata", "Şablon yüklenemedi")
+
+    def reset_template(self):
+        self.receipt_template = self.template_manager.reset()
+        self.template_editor.set_template(self.receipt_template)
+        self.update_preview()
+        messagebox.showinfo("Şablon", "Varsayılan temiz şablona dönüldü. Alt bilgi boş bırakılabilir.")
+
     def show_help(self):
         messagebox.showinfo(
             "Kullanım Bilgisi",
             "1. Ayarlar veya Tek Fiş sekmesinden yazıcı seçin.\n"
             "2. Tek Fiş sekmesinde firma, ürün, tutar, KDV ve ödeme tipini girin.\n"
             "3. Firma Yönetimi sekmesinden firma ekleyebilir, düzenleyebilir, silebilir veya toplu içe aktarabilirsiniz.\n"
-            "4. Seri Baskı sekmesinde fiş sayısı, firma modu, tutar modu ve zaman farkını ayarlayın.\n\n"
+            "4. Seri Baskı sekmesinde fiş sayısı, firma modu, tutar modu ve zaman farkını ayarlayın.\n"
+            "5. Fiş Şablonu sekmesinden üst/alt bilgi, genişlik, ayraç ve görünür alanları düzenleyin.\n\n"
             + TURKISH_CHAR_WARNING,
         )
 
