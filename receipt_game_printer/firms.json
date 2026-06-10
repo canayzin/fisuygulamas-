@@ -1,0 +1,47 @@
+[
+  {
+    "name": "A TAMIRCISI",
+    "sector": "YEDEK PARCA",
+    "address": "M SINAN MAH USKUDAR CD NO:59",
+    "game_code": "OYK-001",
+    "default_product": "YEDEK PARCA",
+    "default_vat": 20.0,
+    "default_amount": 3750.0
+  },
+  {
+    "name": "B MARKET",
+    "sector": "MARKET ALISVERISI",
+    "address": "ATATURK CAD NO:11",
+    "game_code": "OYK-002",
+    "default_product": "MARKET URUNU",
+    "default_vat": 10.0,
+    "default_amount": 420.0
+  },
+  {
+    "name": "C BENZINLIK",
+    "sector": "AKARYAKIT",
+    "address": "CEVRE YOLU KM 5",
+    "game_code": "OYK-003",
+    "default_product": "AKARYAKIT",
+    "default_vat": 20.0,
+    "default_amount": 1250.0
+  },
+  {
+    "name": "D ECZANE",
+    "sector": "ILAC",
+    "address": "SAGLIK SOK NO:8",
+    "game_code": "OYK-004",
+    "default_product": "ILAC",
+    "default_vat": 10.0,
+    "default_amount": 890.0
+  },
+  {
+    "name": "E RESTORAN",
+    "sector": "YEMEK",
+    "address": "LEZZET CAD NO:27",
+    "game_code": "OYK-005",
+    "default_product": "YEMEK SERVISI",
+    "default_vat": 10.0,
+    "default_amount": 640.0
+  }
+]
