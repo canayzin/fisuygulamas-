@@ -19,6 +19,11 @@ class ReceiptTemplate:
     show_time: bool
     show_receipt_no: bool
     show_footer: bool
+    show_phone: bool
+    show_phone2: bool
+    show_website: bool
+    show_tax_office: bool
+    phone_position: str
 
 
 def default_template() -> ReceiptTemplate:
@@ -35,6 +40,11 @@ def default_template() -> ReceiptTemplate:
         show_time=True,
         show_receipt_no=True,
         show_footer=True,
+        show_phone=True,
+        show_phone2=False,
+        show_website=False,
+        show_tax_office=False,
+        phone_position="address_below",
     )
 
 
@@ -73,6 +83,8 @@ class TemplateManager:
 def validate_template(template: ReceiptTemplate) -> None:
     if template.width < 20 or template.width > 48:
         raise ValueError("Fiş genişliği geçersiz")
+    if template.phone_position not in {"address_above", "address_below", "date_above"}:
+        template.phone_position = "address_below"
     if not template.separator_char:
         template.separator_char = "-"
     template.separator_char = template.separator_char[0]

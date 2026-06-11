@@ -10,5 +10,10 @@
   "show_vat": true,
   "show_time": true,
   "show_receipt_no": true,
-  "show_footer": true
+  "show_footer": true,
+  "show_phone": true,
+  "show_phone2": false,
+  "show_website": false,
+  "show_tax_office": false,
+  "phone_position": "address_below"
 }

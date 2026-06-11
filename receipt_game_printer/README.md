@@ -108,3 +108,10 @@ python web_panel.py
 - Bu seçenek kapalıyken başlangıç/bitiş saatleri 00:00 - 23:59 gibi tüm gün aralıklarına ayarlanabilir.
 - **Aynı gün tekrar kullanılabilsin** kapalıysa seri baskıda mümkün olduğunca aynı gün tekrar edilmez; fiş sayısı ayın gün sayısını aşarsa günler yeniden kullanılabilir.
 - Önizleme ve örnek tarih listesi ayar değiştikçe otomatik güncellenir.
+
+## Firma telefon ve ek bilgiler
+- Firma kayıtları artık adres satırlarını ayrı tutar: **Adres Satır 1** ve **Adres Satır 2**.
+- Her firma için **Telefon Numarası**, opsiyonel **Telefon Numarası 2**, **Web Sitesi** ve **Vergi Dairesi** saklanabilir.
+- **Fiş Şablonu** sekmesinde telefon, ikinci telefon, web sitesi ve vergi dairesi görünürlüğü ayrı ayrı açılıp kapatılabilir.
+- Telefon satırının yeri **Adres üstünde**, **Adres altında** veya **Tarih bölümünün üstünde** olarak seçilebilir.
+- Seri baskıda firma değiştikçe o firmaya ait telefon ve ek bilgiler otomatik olarak fişe yansır.

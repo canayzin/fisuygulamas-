@@ -22,6 +22,11 @@ class TemplateEditorFrame(ttk.Frame):
         self.show_time_var = tk.BooleanVar()
         self.show_receipt_no_var = tk.BooleanVar()
         self.show_footer_var = tk.BooleanVar()
+        self.show_phone_var = tk.BooleanVar()
+        self.show_phone2_var = tk.BooleanVar()
+        self.show_website_var = tk.BooleanVar()
+        self.show_tax_office_var = tk.BooleanVar()
+        self.phone_position_var = tk.StringVar()
 
         self._build()
         self.set_template(default_template())
@@ -56,7 +61,20 @@ class TemplateEditorFrame(ttk.Frame):
         ttk.Checkbutton(checks, text="KDV satırı göster", variable=self.show_vat_var).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(checks, text="Saat göster", variable=self.show_time_var).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(checks, text="Fiş no göster", variable=self.show_receipt_no_var).pack(side="left", padx=(0, 12))
-        ttk.Checkbutton(checks, text="Alt bilgi göster", variable=self.show_footer_var).pack(side="left")
+        ttk.Checkbutton(checks, text="Alt bilgi göster", variable=self.show_footer_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(checks, text="Telefon göster", variable=self.show_phone_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(checks, text="İkinci telefon göster", variable=self.show_phone2_var).pack(side="left", padx=(0, 12))
+
+        checks2 = ttk.Frame(form)
+        checks2.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Checkbutton(checks2, text="Web sitesi göster", variable=self.show_website_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(checks2, text="Vergi dairesi göster", variable=self.show_tax_office_var).pack(side="left", padx=(0, 12))
+
+        position_box = ttk.LabelFrame(form, text="Telefon satırının yeri", padding=6)
+        position_box.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Radiobutton(position_box, text="Adres üstünde", value="address_above", variable=self.phone_position_var).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(position_box, text="Adres altında", value="address_below", variable=self.phone_position_var).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(position_box, text="Tarih bölümünün üstünde", value="date_above", variable=self.phone_position_var).pack(side="left")
 
         ttk.Label(
             self,
@@ -80,6 +98,11 @@ class TemplateEditorFrame(ttk.Frame):
             self.show_time_var,
             self.show_receipt_no_var,
             self.show_footer_var,
+            self.show_phone_var,
+            self.show_phone2_var,
+            self.show_website_var,
+            self.show_tax_office_var,
+            self.phone_position_var,
         ]:
             var.trace_add("write", self._changed)
         self.header_text.bind("<KeyRelease>", self._changed)
@@ -105,6 +128,11 @@ class TemplateEditorFrame(ttk.Frame):
         self.show_time_var.set(template.show_time)
         self.show_receipt_no_var.set(template.show_receipt_no)
         self.show_footer_var.set(template.show_footer)
+        self.show_phone_var.set(template.show_phone)
+        self.show_phone2_var.set(template.show_phone2)
+        self.show_website_var.set(template.show_website)
+        self.show_tax_office_var.set(template.show_tax_office)
+        self.phone_position_var.set(template.phone_position)
         self._updating = False
 
     def get_template(self) -> ReceiptTemplate:
@@ -125,6 +153,11 @@ class TemplateEditorFrame(ttk.Frame):
             show_time=self.show_time_var.get(),
             show_receipt_no=self.show_receipt_no_var.get(),
             show_footer=self.show_footer_var.get(),
+            show_phone=self.show_phone_var.get(),
+            show_phone2=self.show_phone2_var.get(),
+            show_website=self.show_website_var.get(),
+            show_tax_office=self.show_tax_office_var.get(),
+            phone_position=self.phone_position_var.get() or "address_below",
         )
         validate_template(template)
         return template

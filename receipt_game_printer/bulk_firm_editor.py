@@ -5,14 +5,15 @@ from tkinter import messagebox, ttk
 
 from firm_manager import Firm
 
-BULK_HELP = "Firma Adı | Sektör | Adres | Oyun Kodu | Ürün | KDV | Tutar"
+BULK_HELP = "Firma | Sektör | Adres 1 | Adres 2 | Tel 1 | Tel 2 | Web | Vergi Dairesi | Oyun Kodu | Ürün | KDV | Tutar"
+LEGACY_HELP = "Firma | Sektör | Adres | Oyun Kodu | Ürün | KDV | Tutar"
 
 
 class BulkFirmEditor(tk.Toplevel):
     def __init__(self, parent: tk.Misc, firms: list[Firm]):
         super().__init__(parent)
         self.title("Toplu Firma Düzenle")
-        self.geometry("900x560")
+        self.geometry("1000x600")
         self.result: tuple[str, list[Firm]] | None = None
         self.mode_var = tk.StringVar(value="replace")
 
@@ -20,7 +21,7 @@ class BulkFirmEditor(tk.Toplevel):
         container.pack(fill="both", expand=True)
 
         ttk.Label(container, text="Her satıra bir firma yazın:").pack(anchor="w")
-        ttk.Label(container, text=BULK_HELP, foreground="#444").pack(anchor="w", pady=(0, 8))
+        ttk.Label(container, text=BULK_HELP, foreground="#444", wraplength=950).pack(anchor="w", pady=(0, 8))
 
         self.text = tk.Text(container, font=("Courier New", 10), height=18)
         self.text.pack(fill="both", expand=True)
@@ -47,7 +48,12 @@ class BulkFirmEditor(tk.Toplevel):
                     [
                         firm.name,
                         firm.sector,
-                        firm.address,
+                        firm.address_line1,
+                        firm.address_line2,
+                        firm.phone1,
+                        firm.phone2,
+                        firm.website,
+                        firm.tax_office,
                         firm.game_code,
                         firm.default_product,
                         str(firm.default_vat).rstrip("0").rstrip("."),
@@ -77,9 +83,27 @@ def parse_bulk_firms(text: str) -> list[Firm]:
         if not line:
             continue
         parts = [part.strip() for part in line.split("|")]
-        if len(parts) != 7:
-            raise ValueError(f"{line_no}. satır hatalı. Format: {BULK_HELP}")
-        name, sector, address, game_code, product, vat_text, amount_text = parts
+        if len(parts) == 7:
+            name, sector, address, game_code, product, vat_text, amount_text = parts
+            address_line1, address_line2 = address, ""
+            phone1 = phone2 = website = tax_office = ""
+        elif len(parts) == 12:
+            (
+                name,
+                sector,
+                address_line1,
+                address_line2,
+                phone1,
+                phone2,
+                website,
+                tax_office,
+                game_code,
+                product,
+                vat_text,
+                amount_text,
+            ) = parts
+        else:
+            raise ValueError(f"{line_no}. satır hatalı. Format: {BULK_HELP} veya eski format: {LEGACY_HELP}")
         if not name:
             raise ValueError(f"{line_no}. satır: Firma adı boş olamaz")
         try:
@@ -90,7 +114,9 @@ def parse_bulk_firms(text: str) -> list[Firm]:
             amount = float(amount_text.replace(",", "."))
         except ValueError as exc:
             raise ValueError(f"{line_no}. satır: Tutar sayısal olmalı") from exc
-        firms.append(Firm(name, sector, address, game_code, product, vat, amount))
+        firms.append(
+            Firm(name, sector, address_line1, address_line2, phone1, phone2, website, tax_office, game_code, product, vat, amount)
+        )
     return firms
 
 
