@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from bulk_firm_editor import ask_bulk_firms
+from date_randomizer import RandomDateTimeOptions, build_random_datetimes
 from firm_dialog import ask_firm
 from firm_manager import Firm, FirmManager
 from printer_service import PrinterService
@@ -68,6 +69,18 @@ class App:
         self.start_dt_var = tk.StringVar(value=datetime.now().strftime("%d-%m-%Y %H:%M:%S"))
         self.delta_var = tk.StringVar(value="5 saniye")
         self.counter_var = tk.StringVar(value="0")
+
+        now = datetime.now()
+        self.random_dt_enabled_var = tk.BooleanVar(value=False)
+        self.random_month_var = tk.StringVar(value=str(now.month))
+        self.random_year_var = tk.StringVar(value=str(now.year))
+        self.random_days_var = tk.BooleanVar(value=True)
+        self.random_times_var = tk.BooleanVar(value=True)
+        self.avoid_night_var = tk.BooleanVar(value=True)
+        self.random_start_time_var = tk.StringVar(value="08:00")
+        self.random_end_time_var = tk.StringVar(value="22:59")
+        self.allow_same_day_var = tk.BooleanVar(value=False)
+        self.random_preview_var = tk.StringVar(value="Rastgele tarih-saat kapalı")
 
     def _build_menu(self):
         menu = tk.Menu(self.root)
@@ -141,8 +154,17 @@ class App:
         self.preview.configure(yscrollcommand=preview_scroll.set)
 
     def _build_batch_tab(self):
-        content = ttk.LabelFrame(self.batch_tab, text="Seri Baskı Ayarları", padding=10)
-        content.pack(fill="both", expand=True)
+        canvas = tk.Canvas(self.batch_tab, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.batch_tab, orient="vertical", command=canvas.yview)
+        scroll_frame = ttk.Frame(canvas)
+        scroll_frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        content = ttk.LabelFrame(scroll_frame, text="Seri Baskı Ayarları", padding=10)
+        content.pack(fill="both", expand=True, padx=4, pady=4)
 
         self._add_entry(content, "Fiş sayısı", self.batch_count_var)
         ttk.Label(content, text="Firma seçim modu").pack(anchor="w")
@@ -153,14 +175,59 @@ class App:
         self._add_entry(content, "Minimum tutar", self.min_amount_var)
         self._add_entry(content, "Maksimum tutar", self.max_amount_var)
         ttk.Label(content, text="Tarih-saat modu").pack(anchor="w")
-        ttk.Combobox(content, textvariable=self.time_mode_var, values=["Şu andan başlat", "Belirli tarihten başlat"], state="readonly").pack(fill="x")
+        ttk.Combobox(
+            content,
+            textvariable=self.time_mode_var,
+            values=["Şu andan başlat", "Belirli tarihten başlat", "Rastgele tarih-saat üret"],
+            state="readonly",
+        ).pack(fill="x")
         self._add_entry(content, "Başlangıç (GG-AA-YYYY SS:DD:SS)", self.start_dt_var)
         ttk.Label(content, text="Fişler arası zaman farkı").pack(anchor="w")
         ttk.Combobox(content, textvariable=self.delta_var, values=["1 saniye", "5 saniye", "10 saniye", "Rastgele"], state="readonly").pack(fill="x")
+        self._build_random_datetime_controls(content)
         ttk.Button(content, text="Seri Baskı Başlat", command=self.start_batch).pack(fill="x", pady=(10, 2))
         ttk.Button(content, text="Baskıyı Durdur", command=self.stop_batch_print).pack(fill="x", pady=2)
         ttk.Label(content, text="Basılan fiş sayısı:").pack(anchor="w", pady=(8, 0))
         ttk.Label(content, textvariable=self.counter_var, font=("Segoe UI", 14, "bold")).pack(anchor="w")
+
+    def _build_random_datetime_controls(self, parent):
+        random_box = ttk.LabelFrame(parent, text="Tarih Rastgeleleştirme", padding=10)
+        random_box.pack(fill="x", pady=(10, 0))
+        ttk.Checkbutton(
+            random_box,
+            text="Rastgele tarih-saat kullan",
+            variable=self.random_dt_enabled_var,
+            command=self._on_random_datetime_toggle,
+        ).grid(row=0, column=0, columnspan=4, sticky="w")
+
+        self.random_dt_widgets: list[tk.Widget] = []
+        self._grid_random_entry(random_box, "Ay seçimi (1-12)", self.random_month_var, 1, 0)
+        self._grid_random_entry(random_box, "Yıl seçimi", self.random_year_var, 1, 2)
+
+        for text, var, row, col in [
+            ("Günleri rastgele üret", self.random_days_var, 2, 0),
+            ("Saatleri rastgele üret", self.random_times_var, 2, 1),
+            ("Gece saatlerini kullanma", self.avoid_night_var, 2, 2),
+            ("Aynı gün tekrar kullanılabilsin", self.allow_same_day_var, 2, 3),
+        ]:
+            command = self._on_avoid_night_toggle if var is self.avoid_night_var else self._on_datetime_setting_changed
+            widget = ttk.Checkbutton(random_box, text=text, variable=var, command=command)
+            widget.grid(row=row, column=col, sticky="w", padx=(0, 8), pady=4)
+            self.random_dt_widgets.append(widget)
+
+        self._grid_random_entry(random_box, "Başlangıç saat", self.random_start_time_var, 3, 0)
+        self._grid_random_entry(random_box, "Bitiş saat", self.random_end_time_var, 3, 2)
+        ttk.Label(random_box, textvariable=self.random_preview_var, foreground="#555", wraplength=900).grid(
+            row=4, column=0, columnspan=4, sticky="ew", pady=(8, 0)
+        )
+        self._set_random_datetime_state()
+
+    def _grid_random_entry(self, parent, label, var, row, col):
+        label_widget = ttk.Label(parent, text=label)
+        label_widget.grid(row=row, column=col, sticky="w", padx=(0, 8), pady=4)
+        entry = ttk.Entry(parent, textvariable=var, width=12)
+        entry.grid(row=row, column=col + 1, sticky="w", pady=4)
+        self.random_dt_widgets.extend([label_widget, entry])
 
     def _build_firms_tab(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -234,8 +301,25 @@ class App:
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=10)
 
     def _wire_preview_updates(self):
-        for var in [self.product_var, self.amount_var, self.vat_var, self.pay_var, self.receipt_no_var]:
-            var.trace_add("write", lambda *_args: self.update_preview())
+        preview_vars = [
+            self.product_var,
+            self.amount_var,
+            self.vat_var,
+            self.pay_var,
+            self.receipt_no_var,
+            self.time_mode_var,
+            self.random_dt_enabled_var,
+            self.random_month_var,
+            self.random_year_var,
+            self.random_days_var,
+            self.random_times_var,
+            self.avoid_night_var,
+            self.random_start_time_var,
+            self.random_end_time_var,
+            self.allow_same_day_var,
+        ]
+        for var in preview_vars:
+            var.trace_add("write", lambda *_args: self._on_datetime_setting_changed())
 
     def _refresh_printers(self):
         printers = self.printer_service.list_printers()
@@ -327,7 +411,7 @@ class App:
             return
         try:
             receipt_no = int(self.receipt_no_var.get() or "1")
-            text = build_receipt_text(self._build_receipt_data(receipt_no, datetime.now()), self.receipt_template)
+            text = build_receipt_text(self._build_receipt_data(receipt_no, self._single_receipt_datetime()), self.receipt_template)
         except Exception:
             text = "Önizleme oluşturulamadı. Firma, tutar ve KDV alanlarını kontrol edin."
         self._set_preview_text(text)
@@ -366,7 +450,7 @@ class App:
         try:
             printer = self._validate_printer()
             receipt_no = int(self.receipt_no_var.get())
-            data = self._build_receipt_data(receipt_no, datetime.now())
+            data = self._build_receipt_data(receipt_no, self._single_receipt_datetime())
             text = build_receipt_text(data, self.receipt_template)
             self.printer_service.print_raw(printer, text)
             self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{receipt_no:06d}.txt", text)
@@ -419,6 +503,84 @@ class App:
             return current + timedelta(seconds=10)
         return current + timedelta(seconds=random.randint(1, 10))
 
+    def _on_datetime_setting_changed(self):
+        self._set_random_datetime_state()
+        self._update_random_datetime_preview()
+        self.update_preview()
+
+    def _on_random_datetime_toggle(self):
+        self._on_datetime_setting_changed()
+
+    def _on_avoid_night_toggle(self):
+        if self.avoid_night_var.get():
+            self.random_start_time_var.set("08:00")
+            self.random_end_time_var.set("22:59")
+        else:
+            self.random_start_time_var.set("00:00")
+            self.random_end_time_var.set("23:59")
+        self._on_datetime_setting_changed()
+
+    def _random_datetime_active(self) -> bool:
+        return self.random_dt_enabled_var.get() or self.time_mode_var.get() == "Rastgele tarih-saat üret"
+
+    def _set_random_datetime_state(self):
+        if not hasattr(self, "random_dt_widgets"):
+            return
+        active = self._random_datetime_active()
+        state = "normal" if active else "disabled"
+        for widget in self.random_dt_widgets:
+            try:
+                widget.configure(state=state)
+            except tk.TclError:
+                pass
+
+    def _random_datetime_options(self) -> RandomDateTimeOptions:
+        try:
+            month = int(self.random_month_var.get())
+            year = int(self.random_year_var.get())
+        except ValueError as exc:
+            raise ValueError("Ay ve yıl sayısal olmalı") from exc
+        return RandomDateTimeOptions(
+            enabled=self._random_datetime_active(),
+            year=year,
+            month=month,
+            random_days=self.random_days_var.get(),
+            random_times=self.random_times_var.get(),
+            avoid_night_hours=self.avoid_night_var.get(),
+            start_time=self.random_start_time_var.get(),
+            end_time=self.random_end_time_var.get(),
+            allow_same_day=self.allow_same_day_var.get(),
+        )
+
+    def _single_receipt_datetime(self) -> datetime:
+        if self._random_datetime_active():
+            return build_random_datetimes(1, self._random_datetime_options())[0]
+        return datetime.now()
+
+    def _batch_random_datetimes(self, count: int) -> list[datetime] | None:
+        if not self._random_datetime_active():
+            return None
+        return build_random_datetimes(count, self._random_datetime_options())
+
+    def _initial_batch_datetime(self) -> datetime:
+        if self.time_mode_var.get() == "Şu andan başlat":
+            return datetime.now()
+        return datetime.strptime(self.start_dt_var.get(), "%d-%m-%Y %H:%M:%S")
+
+    def _update_random_datetime_preview(self):
+        if not hasattr(self, "random_preview_var"):
+            return
+        if not self._random_datetime_active():
+            self.random_preview_var.set("Rastgele tarih-saat kapalı")
+            return
+        try:
+            samples = build_random_datetimes(5, self._random_datetime_options())
+        except ValueError as exc:
+            self.random_preview_var.set(str(exc))
+            return
+        formatted = ", ".join(sample.strftime("%d.%m.%Y %H:%M") for sample in samples)
+        self.random_preview_var.set(f"Örnek tarihler: {formatted}")
+
     def start_batch(self):
         try:
             self._validate_printer()
@@ -439,11 +601,8 @@ class App:
             printer = self._validate_printer()
             start_no = int(self.receipt_no_var.get())
             firms = self._pick_firm_sequence(count)
-            dt = (
-                datetime.now()
-                if self.time_mode_var.get() == "Şu andan başlat"
-                else datetime.strptime(self.start_dt_var.get(), "%d-%m-%Y %H:%M:%S")
-            )
+            random_datetimes = self._batch_random_datetimes(count)
+            dt = self._initial_batch_datetime() if random_datetimes is None else random_datetimes[0]
 
             self.print_count = 0
             for i in range(count):
@@ -451,6 +610,8 @@ class App:
                     break
                 firm = firms[i]
                 amount = self._pick_amount(firm)
+                if random_datetimes is not None:
+                    dt = random_datetimes[i]
                 data = self._build_receipt_data(start_no + i, dt, firm=firm, amount=amount)
                 text = build_receipt_text(data, self.receipt_template)
                 self.printer_service.print_raw(printer, text)
@@ -458,7 +619,8 @@ class App:
                 self.print_count += 1
                 self.root.after(0, lambda c=self.print_count: self.counter_var.set(str(c)))
                 self.root.after(0, lambda t=text: self._set_preview_text(t))
-                dt = self._next_dt(dt)
+                if random_datetimes is None:
+                    dt = self._next_dt(dt)
 
             self.root.after(0, lambda: messagebox.showinfo("Bitti", f"Seri baskı tamamlandı. Basılan: {self.print_count}"))
         except Exception as exc:

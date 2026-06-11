@@ -100,3 +100,11 @@ python web_panel.py
   Firma Adı | Sektör | Adres | Oyun Kodu | Ürün | KDV | Tutar
   ```
 - Termal yazıcıda temiz baskı için Türkçe karakter kullanmayın: Ç yerine C, Ğ yerine G, İ yerine I, Ş yerine S, Ü yerine U, Ö yerine O.
+
+## Tarih rastgeleleştirme
+- **Seri Baskı** sekmesindeki **Tarih-saat modu** alanından `Rastgele tarih-saat üret` seçilebilir veya **Rastgele tarih-saat kullan** kutusu işaretlenebilir.
+- Ay (1-12) ve yıl seçilerek o ay içindeki günler rastgele üretilebilir; fiş numaraları yine sıralı artmaya devam eder.
+- **Gece saatlerini kullanma** açıkken saatler 08:00 - 22:59 aralığına sıkıştırılır.
+- Bu seçenek kapalıyken başlangıç/bitiş saatleri 00:00 - 23:59 gibi tüm gün aralıklarına ayarlanabilir.
+- **Aynı gün tekrar kullanılabilsin** kapalıysa seri baskıda mümkün olduğunca aynı gün tekrar edilmez; fiş sayısı ayın gün sayısını aşarsa günler yeniden kullanılabilir.
+- Önizleme ve örnek tarih listesi ayar değiştikçe otomatik güncellenir.
