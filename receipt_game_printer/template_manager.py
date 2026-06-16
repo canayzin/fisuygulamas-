@@ -79,6 +79,7 @@ class TemplateManager:
         try:
             data = json.loads(self.json_path.read_text(encoding="utf-8"))
             base = asdict(default_template())
+            # Ignore obsolete/unknown keys so old JSON files keep loading.
             base.update({key: value for key, value in data.items() if key in base})
             self.template = ReceiptTemplate(**base)
             validate_template(self.template)

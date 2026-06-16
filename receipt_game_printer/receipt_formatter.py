@@ -100,6 +100,19 @@ def _format_receipt_no(data: ReceiptData, template: ReceiptTemplate) -> str:
     return f"{data.receipt_no:06d}" if template.receipt_no_zero_pad else str(data.receipt_no)
 
 
+def _footer_logo_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> list[str]:
+    if not template.show_footer_logo:
+        return []
+    if template.use_bitmap_nf_logo:
+        lines = [center("[NF LOGO]", width)]
+        if data.footer_logo_code:
+            lines.append(center(data.footer_logo_code, width))
+        return lines
+
+    logo_line = "  ".join(part for part in ["NF", data.footer_logo_code] if part).strip()
+    return [center(logo_line, width)] if logo_line else []
+
+
 def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = None) -> str:
     template = template or default_template()
     validate_template(template)
@@ -150,14 +163,6 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
     if template.show_footer and template.footer_lines:
         rows.append("")
         rows.extend(_fit_line(footer, width) for footer in template.footer_lines)
-    if template.show_footer_logo:
-        if template.use_bitmap_nf_logo:
-            rows.append(center("[NF LOGO]", width))
-            if data.footer_logo_code:
-                rows.append(center(data.footer_logo_code, width))
-        else:
-            logo_line = "  ".join(part for part in ["NF", data.footer_logo_code] if part).strip()
-            if logo_line:
-                rows.append(center(logo_line, width))
+    rows.extend(_footer_logo_lines(data, template, width))
     rows.append("")
     return "\n".join(rows)

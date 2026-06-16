@@ -182,7 +182,7 @@ class TemplateEditorFrame(ttk.Frame):
         template = ReceiptTemplate(
             header_lines=self._text_lines(self.header_text),
             footer_lines=self._text_lines(self.footer_text),
-            eku_format=self.eku_format_var.get().strip() or "EKU NO: {game_code}",
+            eku_format=self.eku_format_var.get().strip() or "EKU NO: {eku_no}",
             eku_no=self.eku_no_var.get().strip() or "001",
             z_no=self.z_no_var.get().strip() or "707",
             separator_char=(self.separator_char_var.get().strip() or "-")[0],
