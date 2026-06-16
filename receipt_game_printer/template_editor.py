@@ -1,3 +1,4 @@
+```python
 from __future__ import annotations
 
 import tkinter as tk
@@ -179,6 +180,7 @@ class TemplateEditorFrame(ttk.Frame):
             width = int(self.width_var.get())
         except ValueError as exc:
             raise ValueError("Fiş genişliği geçersiz") from exc
+
         template = ReceiptTemplate(
             header_lines=self._text_lines(self.header_text),
             footer_lines=self._text_lines(self.footer_text),
@@ -212,3 +214,4 @@ class TemplateEditorFrame(ttk.Frame):
 
     def _text_lines(self, widget: tk.Text) -> list[str]:
         return [line.rstrip() for line in widget.get("1.0", tk.END).splitlines() if line.strip()]
+```

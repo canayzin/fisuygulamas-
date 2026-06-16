@@ -90,6 +90,7 @@ def _address_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> 
     source = [line for line in [data.address_line1, data.address_line2] if line] or ([data.address] if data.address else [])
     if not template.wrap_address:
         return [_fit_line(line, width) for line in source]
+
     lines: list[str] = []
     for line in source:
         lines.extend(_wrap_line(line, width))
@@ -103,11 +104,15 @@ def _format_receipt_no(data: ReceiptData, template: ReceiptTemplate) -> str:
 def _footer_logo_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> list[str]:
     if not template.show_footer_logo:
         return []
-    if template.use_bitmap_nf_logo:
-        logo_line = "  ".join(part for part in ["[NF LOGO]", data.footer_logo_code] if part).strip()
-        return [center(logo_line, width)]
 
-    logo_line = "  ".join(part for part in ["NF", data.footer_logo_code] if part).strip()
+    logo_code = data.footer_logo_code.strip()
+
+    if template.use_bitmap_nf_logo:
+        logo_line = "  ".join(part for part in ["[NF LOGO]", logo_code] if part).strip()
+        return [center(logo_line, width)] if logo_line else [center("[NF LOGO]", width)]
+
+    logo = (template.footer_logo_text or "NF").strip()
+    logo_line = "  ".join(part for part in [logo, logo_code] if part).strip()
     return [center(logo_line, width)] if logo_line else []
 
 
@@ -152,15 +157,22 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
 
     eku_no = data.eku_no if template.use_firm_eku_z and data.eku_no else template.eku_no
     z_no = data.z_no if template.use_firm_eku_z and data.z_no else template.z_no
+
     try:
-        eku_text = template.eku_format.format(game_code=eku_no, receipt_no=_format_receipt_no(data, template), eku_no=eku_no)
+        eku_text = template.eku_format.format(
+            game_code=eku_no,
+            receipt_no=_format_receipt_no(data, template),
+            eku_no=eku_no,
+        )
     except (KeyError, ValueError):
         eku_text = f"EKU NO: {eku_no}"
+
     rows.append(left_right(eku_text, f"Z NO: {z_no}", width))
 
     if template.show_footer and template.footer_lines:
         rows.append("")
         rows.extend(_fit_line(footer, width) for footer in template.footer_lines)
+
     rows.extend(_footer_logo_lines(data, template, width))
     rows.append("")
     return "\n".join(rows)
