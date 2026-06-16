@@ -56,10 +56,10 @@ class PrinterServiceLogoTests(unittest.TestCase):
         print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
         written = b"".join(fake_win32print.writes)
         self.assertNotIn(b"[NF LOGO]", written)
-        self.assertNotIn(b"JH 20018559\n", written)
+        self.assertIn(b" JH 20018559", written)
         self.assertNotIn(bytes.fromhex("f09d9895"), written)
         self.assertNotIn(bytes.fromhex("f09d988d"), written)
-        self.assertTrue(any(chunk.startswith(b"\x1dv0\x00") for chunk in fake_win32print.writes))
+        self.assertTrue(any(chunk.startswith(b"\x1b*\x21") for chunk in fake_win32print.writes))
 
     def test_nf_logo_fallback_uses_plain_ascii_nf(self):
         fake_win32print = FakeWin32Print()
@@ -72,7 +72,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
 
         print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
         written = b"".join(fake_win32print.writes)
-        self.assertIn(b"NF  JH 20018559\n", written)
+        self.assertIn(b"NF JH 20018559\n", written)
         self.assertNotIn(b"[NF LOGO]", written)
 
 
