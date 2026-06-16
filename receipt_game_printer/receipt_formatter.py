@@ -104,10 +104,8 @@ def _footer_logo_lines(data: ReceiptData, template: ReceiptTemplate, width: int)
     if not template.show_footer_logo:
         return []
     if template.use_bitmap_nf_logo:
-        lines = [center("[NF LOGO]", width)]
-        if data.footer_logo_code:
-            lines.append(center(data.footer_logo_code, width))
-        return lines
+        logo_line = "  ".join(part for part in ["[NF LOGO]", data.footer_logo_code] if part).strip()
+        return [center(logo_line, width)]
 
     logo_line = "  ".join(part for part in ["NF", data.footer_logo_code] if part).strip()
     return [center(logo_line, width)] if logo_line else []

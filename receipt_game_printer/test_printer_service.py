@@ -51,12 +51,12 @@ class PrinterServiceLogoTests(unittest.TestCase):
         with patch.object(printer_module, "win32print", fake_win32print), patch.object(
             service, "print_bitmap_logo", wraps=service.print_bitmap_logo
         ) as print_bitmap_logo:
-            service.print_raw("TEST_PRINTER", "UST\n   [NF LOGO]   \nJH 20018559")
+            service.print_raw("TEST_PRINTER", "UST\n   [NF LOGO]  JH 20018559")
 
-        print_bitmap_logo.assert_called_once_with("TEST_PRINTER")
+        print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
         written = b"".join(fake_win32print.writes)
         self.assertNotIn(b"[NF LOGO]", written)
-        self.assertIn(b"JH 20018559\n", written)
+        self.assertNotIn(b"JH 20018559\n", written)
         self.assertNotIn(bytes.fromhex("f09d9895"), written)
         self.assertNotIn(bytes.fromhex("f09d988d"), written)
         self.assertTrue(any(chunk.startswith(b"\x1dv0\x00") for chunk in fake_win32print.writes))
@@ -68,11 +68,11 @@ class PrinterServiceLogoTests(unittest.TestCase):
         with patch.object(printer_module, "win32print", fake_win32print), patch.object(
             service, "print_bitmap_logo", return_value=False
         ) as print_bitmap_logo:
-            service.print_raw("TEST_PRINTER", "[NF LOGO]")
+            service.print_raw("TEST_PRINTER", "[NF LOGO]  JH 20018559")
 
-        print_bitmap_logo.assert_called_once_with("TEST_PRINTER")
+        print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
         written = b"".join(fake_win32print.writes)
-        self.assertIn(b"NF\n", written)
+        self.assertIn(b"NF  JH 20018559\n", written)
         self.assertNotIn(b"[NF LOGO]", written)
 
 
