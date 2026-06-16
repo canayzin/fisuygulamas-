@@ -99,6 +99,7 @@ class PrinterService:
         for line in content.splitlines():
             if line.strip() == "[NF LOGO]":
                 if not self.print_bitmap_logo(h_printer):
+                    print("NF bitmap fallback used")
                     win32print.WritePrinter(h_printer, b"NF\n")
                 continue
             win32print.WritePrinter(h_printer, f"{line}\n".encode("cp857", errors="replace"))
@@ -118,6 +119,7 @@ class PrinterService:
         win32print.WritePrinter(h_printer, b"\x1ba\x01")
         win32print.WritePrinter(h_printer, command)
         win32print.WritePrinter(h_printer, b"\n\x1ba\x00")
+        print("NF bitmap logo printed")
         return True
 
     def save_txt(self, output_dir: Path, filename: str, content: str) -> Path:
