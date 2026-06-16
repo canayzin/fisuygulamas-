@@ -8,6 +8,7 @@ try:
 except ImportError:
     win32print = None
 
+
 NF_LOGO_WIDTH = 76
 NF_LOGO_HEIGHT = 24
 
@@ -28,12 +29,15 @@ def _thick_line(pixels: list[list[int]], x0: int, y0: int, x1: int, y1: int, thi
     sy = 1 if y0 < y1 else -1
     err = dx + dy
     x, y = x0, y0
+
     while True:
         for ox in range(-thickness, thickness + 1):
             for oy in range(-thickness, thickness + 1):
                 _set_pixel(pixels, x + ox, y + oy)
+
         if x == x1 and y == y1:
             break
+
         e2 = 2 * err
         if e2 >= dy:
             err += dy
@@ -45,28 +49,45 @@ def _thick_line(pixels: list[list[int]], x0: int, y0: int, x1: int, y1: int, thi
 
 def _build_logo_pixels() -> list[list[int]]:
     pixels = _new_canvas(NF_LOGO_WIDTH, NF_LOGO_HEIGHT)
-    # Keep the known-good italic NF shape, but trim the bottom artifact strokes and reduce weight.
-    # Coordinates are cropped from the wider working mark so the logo sits closer to the text code.
+
+    # İnce ayarlı italik NF:
+    # - Mevcut çalışan italik form korunur.
+    # - Eski 160px kalın logo kullanılmaz.
+    # - Alt çizgi artefaktı yoktur.
+    # - F harfinde alt kol yoktur; E gibi görünmez.
+    # - N ve F birbirine yakındır.
+    # - Çok ince son sürüme göre biraz daha belirgindir, ama bold değildir.
+
+    # N harfi: kontrollü paralel stroke ile orta kalınlık.
     _thick_line(pixels, 4, 20, 12, 4, 0)
     _thick_line(pixels, 5, 20, 13, 4, 0)
+
     _thick_line(pixels, 12, 4, 28, 20, 0)
     _thick_line(pixels, 13, 4, 29, 20, 0)
+
     _thick_line(pixels, 28, 20, 36, 4, 0)
     _thick_line(pixels, 29, 20, 37, 4, 0)
+
+    # F harfi: N'ye yakın, alt kol yok.
     _thick_line(pixels, 37, 20, 39, 4, 0)
     _thick_line(pixels, 38, 20, 40, 4, 0)
+
     _thick_line(pixels, 39, 4, 72, 4, 0)
     _thick_line(pixels, 39, 5, 72, 5, 0)
+
     _thick_line(pixels, 38, 12, 63, 12, 0)
     _thick_line(pixels, 38, 13, 63, 13, 0)
+
     return pixels
 
 
 def _pack_esc_star_24dot(pixels: list[list[int]]) -> bytes:
     height = len(pixels)
     width = len(pixels[0])
+
     if height > 24:
         raise ValueError("ESC * 24-dot logo height must be 24 pixels or less")
+
     data = bytearray()
     for x in range(width):
         for block in range(3):
@@ -76,6 +97,7 @@ def _pack_esc_star_24dot(pixels: list[list[int]]) -> bytes:
                 if y < height and pixels[y][x]:
                     value |= 0x80 >> bit
             data.append(value)
+
     n_l = width & 0xFF
     n_h = (width >> 8) & 0xFF
     return b"\x1b*\x21" + bytes([n_l, n_h]) + bytes(data)
@@ -88,7 +110,10 @@ class PrinterService:
     def list_printers(self) -> List[str]:
         if win32print is None:
             return []
-        printers = win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)
+
+        printers = win32print.EnumPrinters(
+            win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS
+        )
         return [p[2] for p in printers]
 
     def printer_exists(self, printer_name: str) -> bool:
@@ -97,12 +122,13 @@ class PrinterService:
     def print_raw(self, printer_name: str, content: str, _logo_path: str | Path | None = None) -> None:
         if win32print is None:
             raise RuntimeError("pywin32 yüklü değil.")
+
         if not self.printer_exists(printer_name):
             raise RuntimeError("Yazıcı bulunamadı veya bağlı değil.")
 
         h_printer = win32print.OpenPrinter(printer_name)
         try:
-            job = win32print.StartDocPrinter(h_printer, 1, ("Oyun Fişi", None, "RAW"))
+            win32print.StartDocPrinter(h_printer, 1, ("Oyun Fişi", None, "RAW"))
             try:
                 win32print.StartPagePrinter(h_printer)
                 self._write_receipt_with_optional_logo(h_printer, content)
@@ -116,23 +142,35 @@ class PrinterService:
     def _write_receipt_with_optional_logo(self, h_printer, content: str) -> None:
         lines = content.splitlines()
         index = 0
+
         while index < len(lines):
             line = lines[index]
             stripped = line.strip()
+
             if stripped.startswith("[NF LOGO]"):
                 footer_logo_code = stripped.removeprefix("[NF LOGO]").strip()
+
                 if not footer_logo_code and index + 1 < len(lines):
                     next_line = lines[index + 1].strip()
                     if next_line:
                         footer_logo_code = next_line
                         index += 1
+
                 if not self.print_bitmap_logo(h_printer, footer_logo_code):
                     print("NF bitmap fallback used")
                     fallback = " ".join(part for part in ["NF", footer_logo_code] if part)
-                    win32print.WritePrinter(h_printer, f"{fallback}\n".encode("cp857", errors="replace"))
+                    win32print.WritePrinter(
+                        h_printer,
+                        f"{fallback}\n".encode("cp857", errors="replace"),
+                    )
+
                 index += 1
                 continue
-            win32print.WritePrinter(h_printer, f"{line}\n".encode("cp857", errors="replace"))
+
+            win32print.WritePrinter(
+                h_printer,
+                f"{line}\n".encode("cp857", errors="replace"),
+            )
             index += 1
 
     def print_bitmap_logo(self, h_printer, footer_logo_code: str = "") -> bool:
@@ -141,10 +179,16 @@ class PrinterService:
             return False
 
         code = footer_logo_code.strip().upper()
+
         win32print.WritePrinter(h_printer, b"\x1ba\x01")
         win32print.WritePrinter(h_printer, NF_LOGO_ESC_STAR)
+
         if code:
-            win32print.WritePrinter(h_printer, f" {code}".encode("cp857", errors="replace"))
+            win32print.WritePrinter(
+                h_printer,
+                f" {code}".encode("cp857", errors="replace"),
+            )
+
         win32print.WritePrinter(h_printer, b"\n\x1ba\x00")
         print("NF bitmap logo printed")
         return True
