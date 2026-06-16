@@ -61,6 +61,20 @@ class PrinterServiceLogoTests(unittest.TestCase):
         self.assertNotIn(bytes.fromhex("f09d988d"), written)
         self.assertTrue(any(chunk.startswith(b"\x1dv0\x00") for chunk in fake_win32print.writes))
 
+    def test_nf_logo_fallback_uses_plain_ascii_nf(self):
+        fake_win32print = FakeWin32Print()
+        service = PrinterService()
+
+        with patch.object(printer_module, "win32print", fake_win32print), patch.object(
+            service, "print_bitmap_logo", return_value=False
+        ) as print_bitmap_logo:
+            service.print_raw("TEST_PRINTER", "[NF LOGO]")
+
+        print_bitmap_logo.assert_called_once_with("TEST_PRINTER")
+        written = b"".join(fake_win32print.writes)
+        self.assertIn(b"NF\n", written)
+        self.assertNotIn(b"[NF LOGO]", written)
+
 
 if __name__ == "__main__":
     unittest.main()
