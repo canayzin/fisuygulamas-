@@ -10,6 +10,7 @@ class ReceiptTemplate:
     header_lines: list[str]
     footer_lines: list[str]
     eku_format: str
+    eku_no: str
     z_no: str
     separator_char: str
     width: int
@@ -24,13 +25,22 @@ class ReceiptTemplate:
     show_website: bool
     show_tax_office: bool
     phone_position: str
+    header_compact: bool
+    wrap_address: bool
+    receipt_no_zero_pad: bool
+    show_trade_registry_no: bool
+    show_footer_logo: bool
+    footer_logo_text: str
+    use_firm_eku_z: bool
+    use_bitmap_nf_logo: bool
 
 
 def default_template() -> ReceiptTemplate:
     return ReceiptTemplate(
         header_lines=[],
         footer_lines=[],
-        eku_format="EKU NO: {game_code}",
+        eku_format="EKU NO: {eku_no}",
+        eku_no="001",
         z_no="707",
         separator_char="-",
         width=32,
@@ -43,8 +53,16 @@ def default_template() -> ReceiptTemplate:
         show_phone=True,
         show_phone2=False,
         show_website=False,
-        show_tax_office=False,
+        show_tax_office=True,
         phone_position="address_below",
+        header_compact=True,
+        wrap_address=True,
+        receipt_no_zero_pad=False,
+        show_trade_registry_no=True,
+        show_footer_logo=True,
+        footer_logo_text="NF",
+        use_firm_eku_z=True,
+        use_bitmap_nf_logo=True,
     )
 
 
@@ -61,7 +79,7 @@ class TemplateManager:
         try:
             data = json.loads(self.json_path.read_text(encoding="utf-8"))
             base = asdict(default_template())
-            base.update(data)
+            base.update({key: value for key, value in data.items() if key in base})
             self.template = ReceiptTemplate(**base)
             validate_template(self.template)
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
