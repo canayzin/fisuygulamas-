@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Oyun Fiş Paneli</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 12px; background: #f7f7f7; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    .box { border: 1px solid #ccc; border-radius: 8px; padding: 12px; background: #fff; }
+    input,select,button,textarea { width: 100%; margin: 6px 0; padding: 12px; font-size: 16px; box-sizing: border-box; }
+    button { min-height: 48px; font-weight: bold; }
+    textarea { height: 280px; font-family: monospace; }
+    .status { font-weight: bold; color: #0a4; }
+  </style>
+</head>
+<body>
+  <h2>Mobil Uyumlu Oyun Fiş Paneli</h2>
+  <div class="box">
+    <div><b>Bilgisayarda:</b> http://127.0.0.1:5050</div>
+    <div><b>Telefondan:</b> http://{{ local_ip }}:5050</div>
+  </div>
+  <div class="grid">
+    <div class="box">
+      <label>Fiş Sayısı</label><input id="count" value="10" />
+      <label>Firma Modu</label>
+      <select id="firm_mode"><option value="ordered">Sırayla</option><option value="random">Rastgele</option><option value="single">Tek firma</option></select>
+      <label>Tek Firma</label>
+      <select id="single_firm">{% for f in firms %}<option>{{f.name}}</option>{% endfor %}</select>
+      <label><input type="checkbox" id="no_repeat" /> Aynı firma üst üste gelmesin</label>
+      <label>Tutar Modu</label>
+      <select id="amount_mode"><option value="fixed">Sabit</option><option value="random">Rastgele</option><option value="firm">Firma bazlı</option></select>
+      <label>Sabit Tutar</label><input id="fixed_amount" value="1000" />
+      <label>Min Tutar</label><input id="min_amount" value="500" />
+      <label>Max Tutar</label><input id="max_amount" value="5000" />
+      <label>Başlangıç Modu</label>
+      <select id="start_mode"><option value="now">Şu andan başlat</option><option value="custom">Belirli tarihten başlat</option></select>
+      <label>Başlangıç Tarih-Saat</label><input id="start_datetime" value="17-05-2026 18:35:22" />
+      <label>Zaman Farkı</label>
+      <select id="delta_mode"><option value="1">1 sn</option><option value="5">5 sn</option><option value="10">10 sn</option><option value="random">Rastgele</option></select>
+      <label>Fiş No Başlangıç</label><input id="start_receipt_no" value="1" />
+      <label>KDV</label><input id="vat_rate" value="20" />
+      <label>Ödeme</label><select id="payment"><option>NAKIT</option><option>KART</option><option>OYUN PARASI</option></select>
+      <button onclick="generateReceipts()">Fişleri Üret</button>
+      <div class="status" id="generate_status"></div>
+    </div>
+    <div class="box">
+      <label>Yazıcı Seçimi</label>
+      <select id="printer_name"></select>
+      <button onclick="testConnection()">Bağlantı Testi (Yazıcıları Getir)</button>
+      <button onclick="printTestReceipt()">Test Fişi Bas</button>
+
+      <label>Önizleme</label>
+      <textarea id="preview"></textarea>
+      <button onclick="printPreview()">Önizlemeyi Yazdır (Tek)</button>
+      <button onclick="printAll()">Tüm Üretilen Fişleri Yazdır</button>
+      <button onclick="stopPrint()">Baskıyı Durdur</button>
+      <div class="status" id="print_status">0 / 0 basıldı</div>
+    </div>
+  </div>
+<script>
+let receipts = [];
+let activeJobId = null;
+let statusTimer = null;
+
+async function testConnection(){
+  const res = await fetch('/api/printers');
+  const data = await res.json();
+  const sel = document.getElementById('printer_name');
+  sel.innerHTML = '';
+  if(!data.printers || data.printers.length === 0){
+    alert('Yazıcı bulunamadı');
+    return;
+  }
+  data.printers.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  alert(`Bağlantı başarılı. ${data.printers.length} yazıcı bulundu.`);
+}
+
+async function generateReceipts(){
+  const body = {
+    count: document.getElementById('count').value,
+    firm_mode: document.getElementById('firm_mode').value,
+    single_firm: document.getElementById('single_firm').value,
+    no_repeat: document.getElementById('no_repeat').checked,
+    amount_mode: document.getElementById('amount_mode').value,
+    fixed_amount: document.getElementById('fixed_amount').value,
+    min_amount: document.getElementById('min_amount').value,
+    max_amount: document.getElementById('max_amount').value,
+    start_mode: document.getElementById('start_mode').value,
+    start_datetime: document.getElementById('start_datetime').value,
+    delta_mode: document.getElementById('delta_mode').value,
+    start_receipt_no: document.getElementById('start_receipt_no').value,
+    vat_rate: document.getElementById('vat_rate').value,
+    payment: document.getElementById('payment').value,
+  };
+  const res = await fetch('/api/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const data = await res.json();
+  if(data.error){ alert(data.error); return; }
+  receipts = data.receipts;
+  document.getElementById('preview').value = receipts.length ? receipts[0].text : '';
+  document.getElementById('generate_status').textContent = `${data.count} fiş üretildi.`;
+}
+
+async function printPreview(){
+  const text = document.getElementById('preview').value;
+  await startPrintJob([text]);
+}
+
+async function printAll(){
+  if(!receipts.length){ alert('Fiş üretilemedi: önce fiş üretin.'); return; }
+  await startPrintJob(receipts.map(r => r.text));
+}
+
+async function startPrintJob(texts){
+  const printer_name = document.getElementById('printer_name').value;
+  const res = await fetch('/api/print', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({texts, printer_name})});
+  const data = await res.json();
+  if(data.error){ alert(data.error); return; }
+  activeJobId = data.job_id;
+  pollStatus();
+}
+
+function pollStatus(){
+  if(statusTimer) clearInterval(statusTimer);
+  statusTimer = setInterval(async () => {
+    if(!activeJobId) return;
+    const res = await fetch(`/api/print/status/${activeJobId}`);
+    const data = await res.json();
+    if(data.error){ clearInterval(statusTimer); alert(data.error); return; }
+    document.getElementById('print_status').textContent = `${data.printed} / ${data.total} basıldı`;
+    if(data.error){ alert(data.error); }
+    if(data.done){ clearInterval(statusTimer); activeJobId = null; }
+  }, 700);
+}
+
+async function stopPrint(){
+  if(!activeJobId){ alert('Aktif baskı yok.'); return; }
+  const res = await fetch('/api/print/stop', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_id: activeJobId})});
+  const data = await res.json();
+  if(data.error){ alert(data.error); return; }
+}
+
+async function printTestReceipt(){
+  const printer_name = document.getElementById('printer_name').value;
+  const res = await fetch('/api/print/test', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({printer_name})});
+  const data = await res.json();
+  if(data.error){ alert(data.error); return; }
+  alert('Test fişi gönderildi.');
+}
+
+testConnection();
+</script>
+</body>
+</html>
