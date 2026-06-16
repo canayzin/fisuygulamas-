@@ -87,7 +87,9 @@ def _contact_lines(data: ReceiptData, template: ReceiptTemplate) -> list[str]:
 
 
 def _address_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> list[str]:
-    source = [line for line in [data.address_line1, data.address_line2] if line] or ([data.address] if data.address else [])
+    source = [line for line in [data.address_line1, data.address_line2] if line] or (
+        [data.address] if data.address else []
+    )
     if not template.wrap_address:
         return [_fit_line(line, width) for line in source]
 
@@ -131,23 +133,27 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
     header_rows = [data.firm_name, data.sector]
     header_rows.extend(_address_lines(data, template, width))
     header_rows.extend(_contact_lines(data, template))
+
     for header in header_rows:
         if not header:
             continue
         rows.append(center(header, width) if template.center_firm_name else _fit_line(header, width))
-    rows.append("")
 
+    rows.append("")
     rows.append(data.dt.strftime("%d-%m-%Y"))
+
     if template.show_time:
         rows.append(f"SAAT: {data.dt.strftime('%H:%M')}")
     if template.show_receipt_no:
         rows.append(f"FIS NO : {_format_receipt_no(data, template)}")
-    rows.append("")
 
+    rows.append("")
     rows.append(_format_product_line(data, format_money(data.amount), width))
     rows.append(separator)
+
     if template.show_vat:
         rows.append(left_right("TOPKDV", format_money(vat_amount), width))
+
     rows.append(left_right("TOPLAM", format_money(data.amount), width))
     rows.append(separator)
     rows.append(left_right(data.payment_type, format_money(data.amount), width))
