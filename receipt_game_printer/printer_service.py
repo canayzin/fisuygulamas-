@@ -51,18 +51,32 @@ def _build_logo_pixels() -> list[list[int]]:
     pixels = _new_canvas(NF_LOGO_WIDTH, NF_LOGO_HEIGHT)
 
     # İnce ayarlı italik NF:
+    # - Mevcut çalışan italik form korunur.
     # - Eski 160px kalın logo kullanılmaz.
-    # - Alt çizgi artefaktı yok.
-    # - F harfinde alt kol yok; E gibi görünmez.
+    # - Alt çizgi artefaktı yoktur.
+    # - F harfinde alt kol yoktur; E gibi görünmez.
     # - N ve F birbirine yakındır.
-    # - Stroke kalınlığı ince tutulur.
-    _thick_line(pixels, 4, 20, 12, 4, 0)
-    _thick_line(pixels, 12, 4, 28, 20, 0)
-    _thick_line(pixels, 28, 20, 36, 4, 0)
+    # - Çok ince son sürüme göre biraz daha belirgindir, ama bold değildir.
 
-    _thick_line(pixels, 39, 20, 47, 4, 0)
-    _thick_line(pixels, 47, 4, 72, 4, 0)
-    _thick_line(pixels, 43, 12, 64, 12, 0)
+    # N harfi: kontrollü paralel stroke ile orta kalınlık.
+    _thick_line(pixels, 4, 20, 12, 4, 0)
+    _thick_line(pixels, 5, 20, 13, 4, 0)
+
+    _thick_line(pixels, 12, 4, 28, 20, 0)
+    _thick_line(pixels, 13, 4, 29, 20, 0)
+
+    _thick_line(pixels, 28, 20, 36, 4, 0)
+    _thick_line(pixels, 29, 20, 37, 4, 0)
+
+    # F harfi: N'ye yakın, alt kol yok.
+    _thick_line(pixels, 37, 20, 39, 4, 0)
+    _thick_line(pixels, 38, 20, 40, 4, 0)
+
+    _thick_line(pixels, 39, 4, 72, 4, 0)
+    _thick_line(pixels, 39, 5, 72, 5, 0)
+
+    _thick_line(pixels, 38, 12, 63, 12, 0)
+    _thick_line(pixels, 38, 13, 63, 13, 0)
 
     return pixels
 
@@ -86,7 +100,6 @@ def _pack_esc_star_24dot(pixels: list[list[int]]) -> bytes:
 
     n_l = width & 0xFF
     n_h = (width >> 8) & 0xFF
-
     return b"\x1b*\x21" + bytes([n_l, n_h]) + bytes(data)
 
 
@@ -115,7 +128,7 @@ class PrinterService:
 
         h_printer = win32print.OpenPrinter(printer_name)
         try:
-            job = win32print.StartDocPrinter(h_printer, 1, ("Oyun Fişi", None, "RAW"))
+            win32print.StartDocPrinter(h_printer, 1, ("Oyun Fişi", None, "RAW"))
             try:
                 win32print.StartPagePrinter(h_printer)
                 self._write_receipt_with_optional_logo(h_printer, content)

@@ -90,6 +90,7 @@ def _address_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> 
     source = [line for line in [data.address_line1, data.address_line2] if line] or (
         [data.address] if data.address else []
     )
+
     if not template.wrap_address:
         return [_fit_line(line, width) for line in source]
 
@@ -126,6 +127,7 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
     separator = (template.separator_char or ".")[0] * min(width, max(width - 2, 1))
 
     rows: list[str] = []
+
     rows.extend(_fit_line(header, width) for header in template.header_lines)
     if template.header_lines and not template.header_compact:
         rows.append("")
@@ -144,6 +146,7 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
 
     if template.show_time:
         rows.append(f"SAAT: {data.dt.strftime('%H:%M')}")
+
     if template.show_receipt_no:
         rows.append(f"FIS NO : {_format_receipt_no(data, template)}")
 
