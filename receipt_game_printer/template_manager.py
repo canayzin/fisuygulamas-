@@ -76,23 +76,28 @@ class TemplateManager:
             self.template = default_template()
             self.save()
             return self.template
+
         try:
             data = json.loads(self.json_path.read_text(encoding="utf-8"))
             base = asdict(default_template())
-            # Ignore obsolete/unknown keys so old JSON files keep loading.
             base.update({key: value for key, value in data.items() if key in base})
             self.template = ReceiptTemplate(**base)
             validate_template(self.template)
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             self.template = default_template()
+
         return self.template
 
     def save(self, template: ReceiptTemplate | None = None) -> None:
         if template is not None:
             validate_template(template)
             self.template = template
+
         self.json_path.parent.mkdir(parents=True, exist_ok=True)
-        self.json_path.write_text(json.dumps(asdict(self.template), indent=2, ensure_ascii=False), encoding="utf-8")
+        self.json_path.write_text(
+            json.dumps(asdict(self.template), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
     def reset(self) -> ReceiptTemplate:
         self.template = default_template()
@@ -102,8 +107,23 @@ class TemplateManager:
 def validate_template(template: ReceiptTemplate) -> None:
     if template.width < 20 or template.width > 48:
         raise ValueError("Fiş genişliği geçersiz")
+
     if template.phone_position not in {"address_above", "address_below", "date_above"}:
         template.phone_position = "address_below"
+
     if not template.separator_char:
         template.separator_char = "-"
+
     template.separator_char = template.separator_char[0]
+
+    if not template.footer_logo_text:
+        template.footer_logo_text = "NF"
+
+    if not template.eku_format:
+        template.eku_format = "EKU NO: {eku_no}"
+
+    if not template.eku_no:
+        template.eku_no = "001"
+
+    if not template.z_no:
+        template.z_no = "707"
