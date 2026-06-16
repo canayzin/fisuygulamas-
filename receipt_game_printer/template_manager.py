@@ -80,9 +80,14 @@ class TemplateManager:
         try:
             data = json.loads(self.json_path.read_text(encoding="utf-8"))
             base = asdict(default_template())
+
+            # Eski JSON dosyalarındaki bilinmeyen alanları görmezden gel.
+            # Böylece eski sürümler yeni şablonlarla uyumlu kalır.
             base.update({key: value for key, value in data.items() if key in base})
+
             self.template = ReceiptTemplate(**base)
             validate_template(self.template)
+
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             self.template = default_template()
 
@@ -108,7 +113,11 @@ def validate_template(template: ReceiptTemplate) -> None:
     if template.width < 20 or template.width > 48:
         raise ValueError("Fiş genişliği geçersiz")
 
-    if template.phone_position not in {"address_above", "address_below", "date_above"}:
+    if template.phone_position not in {
+        "address_above",
+        "address_below",
+        "date_above",
+    }:
         template.phone_position = "address_below"
 
     if not template.separator_char:

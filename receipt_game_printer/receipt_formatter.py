@@ -90,6 +90,7 @@ def _address_lines(data: ReceiptData, template: ReceiptTemplate, width: int) -> 
     source = [line for line in [data.address_line1, data.address_line2] if line] or ([data.address] if data.address else [])
     if not template.wrap_address:
         return [_fit_line(line, width) for line in source]
+
     lines: list[str] = []
     for line in source:
         lines.extend(_wrap_line(line, width))
@@ -156,8 +157,13 @@ def build_receipt_text(data: ReceiptData, template: ReceiptTemplate | None = Non
 
     eku_no = data.eku_no if template.use_firm_eku_z and data.eku_no else template.eku_no
     z_no = data.z_no if template.use_firm_eku_z and data.z_no else template.z_no
+
     try:
-        eku_text = template.eku_format.format(game_code=eku_no, receipt_no=_format_receipt_no(data, template), eku_no=eku_no)
+        eku_text = template.eku_format.format(
+            game_code=eku_no,
+            receipt_no=_format_receipt_no(data, template),
+            eku_no=eku_no,
+        )
     except (KeyError, ValueError):
         eku_text = f"EKU NO: {eku_no}"
 
