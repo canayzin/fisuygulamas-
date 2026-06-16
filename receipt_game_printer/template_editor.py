@@ -1,3 +1,4 @@
+```python
 from __future__ import annotations
 
 import tkinter as tk
@@ -35,6 +36,7 @@ class TemplateEditorFrame(ttk.Frame):
         self.show_footer_logo_var = tk.BooleanVar()
         self.footer_logo_text_var = tk.StringVar()
         self.use_firm_eku_z_var = tk.BooleanVar()
+        self.use_bitmap_nf_logo_var = tk.BooleanVar()
 
         self._build()
         self.set_template(default_template())
@@ -63,7 +65,7 @@ class TemplateEditorFrame(ttk.Frame):
         self._entry(form, "Ayraç çizgisi karakteri", self.separator_char_var, 1, 2)
         self._entry(form, "Fiş genişliği karakter sayısı", self.width_var, 2, 0)
         self._entry(form, "Ürün satırı formatı", self.product_format_var, 3, 0, columnspan=3)
-        self._entry(form, "Alt logo metni", self.footer_logo_text_var, 4, 0, columnspan=3)
+        self._entry(form, "Alt logo metni (bitmap kapalıysa)", self.footer_logo_text_var, 4, 0, columnspan=3)
 
         checks = ttk.Frame(form)
         checks.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(8, 0))
@@ -87,6 +89,7 @@ class TemplateEditorFrame(ttk.Frame):
         ttk.Checkbutton(checks3, text="Fiş no sıfır dolgulu", variable=self.receipt_no_zero_pad_var).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(checks3, text="T. Sicil No göster", variable=self.show_trade_registry_no_var).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(checks3, text="Alt logo göster", variable=self.show_footer_logo_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(checks3, text="Bitmap NF logo kullan", variable=self.use_bitmap_nf_logo_var).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(checks3, text="Firma bazlı EKU/Z kullan", variable=self.use_firm_eku_z_var).pack(side="left", padx=(0, 12))
 
         position_box = ttk.LabelFrame(form, text="Telefon satırının yeri", padding=6)
@@ -130,6 +133,7 @@ class TemplateEditorFrame(ttk.Frame):
             self.show_footer_logo_var,
             self.footer_logo_text_var,
             self.use_firm_eku_z_var,
+            self.use_bitmap_nf_logo_var,
         ]:
             var.trace_add("write", self._changed)
         self.header_text.bind("<KeyRelease>", self._changed)
@@ -168,6 +172,7 @@ class TemplateEditorFrame(ttk.Frame):
         self.show_footer_logo_var.set(template.show_footer_logo)
         self.footer_logo_text_var.set(template.footer_logo_text)
         self.use_firm_eku_z_var.set(template.use_firm_eku_z)
+        self.use_bitmap_nf_logo_var.set(template.use_bitmap_nf_logo)
         self._updating = False
 
     def get_template(self) -> ReceiptTemplate:
@@ -175,10 +180,11 @@ class TemplateEditorFrame(ttk.Frame):
             width = int(self.width_var.get())
         except ValueError as exc:
             raise ValueError("Fiş genişliği geçersiz") from exc
+
         template = ReceiptTemplate(
             header_lines=self._text_lines(self.header_text),
             footer_lines=self._text_lines(self.footer_text),
-            eku_format=self.eku_format_var.get().strip() or "EKU NO: {game_code}",
+            eku_format=self.eku_format_var.get().strip() or "EKU NO: {eku_no}",
             eku_no=self.eku_no_var.get().strip() or "001",
             z_no=self.z_no_var.get().strip() or "707",
             separator_char=(self.separator_char_var.get().strip() or "-")[0],
@@ -199,11 +205,13 @@ class TemplateEditorFrame(ttk.Frame):
             receipt_no_zero_pad=self.receipt_no_zero_pad_var.get(),
             show_trade_registry_no=self.show_trade_registry_no_var.get(),
             show_footer_logo=self.show_footer_logo_var.get(),
-            footer_logo_text=self.footer_logo_text_var.get().strip() or "𝘕𝘍",
+            footer_logo_text=self.footer_logo_text_var.get().strip() or "NF",
             use_firm_eku_z=self.use_firm_eku_z_var.get(),
+            use_bitmap_nf_logo=self.use_bitmap_nf_logo_var.get(),
         )
         validate_template(template)
         return template
 
     def _text_lines(self, widget: tk.Text) -> list[str]:
         return [line.rstrip() for line in widget.get("1.0", tk.END).splitlines() if line.strip()]
+```

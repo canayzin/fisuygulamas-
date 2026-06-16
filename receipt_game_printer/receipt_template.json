@@ -21,7 +21,8 @@
   "receipt_no_zero_pad": false,
   "show_trade_registry_no": true,
   "show_footer_logo": true,
-  "footer_logo_text": "𝘕𝘍",
+  "footer_logo_text": "NF",
   "use_firm_eku_z": true,
-  "eku_no": "001"
+  "eku_no": "001",
+  "use_bitmap_nf_logo": true
 }
