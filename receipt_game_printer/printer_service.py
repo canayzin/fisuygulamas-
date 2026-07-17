@@ -8,7 +8,6 @@ try:
 except ImportError:
     win32print = None
 
-
 NF_LOGO_WIDTH = 76
 NF_LOGO_HEIGHT = 24
 
