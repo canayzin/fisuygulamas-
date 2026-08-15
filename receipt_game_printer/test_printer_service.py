@@ -8,7 +8,12 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import printer_service as printer_module
-from printer_service import PrinterService
+from printer_service import (
+    NF_LOGO_HEIGHT,
+    NF_LOGO_WIDTH,
+    PrinterService,
+    _build_logo_pixels,
+)
 
 
 class FakeWin32Print:
@@ -44,36 +49,158 @@ class FakeWin32Print:
 
 
 class PrinterServiceLogoTests(unittest.TestCase):
+    def test_nf_logo_is_a_small_nonempty_monogram_without_f_bottom_arm(self):
+        pixels = _build_logo_pixels()
+
+        self.assertEqual(
+            (NF_LOGO_WIDTH, NF_LOGO_HEIGHT),
+            (58, 18),
+        )
+
+        self.assertEqual(
+            len(pixels),
+            NF_LOGO_HEIGHT,
+        )
+
+        self.assertTrue(
+            all(
+                len(row) == NF_LOGO_WIDTH
+                for row in pixels
+            )
+        )
+
+        self.assertGreater(
+            sum(map(sum, pixels)),
+            0,
+        )
+
+        # Son iki satır boş kalmalı.
+        # Böylece eski alt çizgi / underline artefaktı oluşmaz.
+        self.assertFalse(any(pixels[-1]))
+        self.assertFalse(any(pixels[-2]))
+
+        # F'nin orta kolunun altında yatay bir alt kol olmamalı.
+        # Aksi halde F, E harfine benzeyebilir.
+        #
+        # Bu bölgede yalnızca N/F bağlantısının eğimli gövdesinden
+        # tek bir piksel bulunmasına izin veriyoruz.
+        for row in pixels[9:]:
+            f_pixels = [
+                x
+                for x in range(
+                    24,
+                    NF_LOGO_WIDTH,
+                )
+                if row[x]
+            ]
+
+            self.assertLessEqual(
+                len(f_pixels),
+                1,
+            )
+
     def test_nf_logo_placeholder_is_replaced_before_cp857_text_write(self):
         fake_win32print = FakeWin32Print()
         service = PrinterService()
 
-        with patch.object(printer_module, "win32print", fake_win32print), patch.object(
-            service, "print_bitmap_logo", wraps=service.print_bitmap_logo
+        with patch.object(
+            printer_module,
+            "win32print",
+            fake_win32print,
+        ), patch.object(
+            service,
+            "print_bitmap_logo",
+            wraps=service.print_bitmap_logo,
         ) as print_bitmap_logo:
-            service.print_raw("TEST_PRINTER", "UST\n   [NF LOGO]  JH 20018559")
 
-        print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
-        written = b"".join(fake_win32print.writes)
-        self.assertNotIn(b"[NF LOGO]", written)
-        self.assertIn(b" JH 20018559", written)
-        self.assertNotIn(bytes.fromhex("f09d9895"), written)
-        self.assertNotIn(bytes.fromhex("f09d988d"), written)
-        self.assertTrue(any(chunk.startswith(b"\x1b*\x21") for chunk in fake_win32print.writes))
+            service.print_raw(
+                "TEST_PRINTER",
+                "UST\n   [NF LOGO]  JH 20018559",
+            )
+
+        print_bitmap_logo.assert_called_once_with(
+            "TEST_PRINTER",
+            "JH 20018559",
+        )
+
+        written = b"".join(
+            fake_win32print.writes
+        )
+
+        # Placeholder gerçek RAW çıktıda bulunmamalı.
+        self.assertNotIn(
+            b"[NF LOGO]",
+            written,
+        )
+
+        # Firma kodu bitmap değil, normal text olarak kalmalı.
+        self.assertIn(
+            b" JH 20018559",
+            written,
+        )
+
+        self.assertIn(
+            "JH 20018559".encode("cp857"),
+            written,
+        )
+
+        # Unicode / stilize NF karakterleri RAW çıktıya
+        # yanlışlıkla UTF-8 olarak gönderilmemeli.
+        self.assertNotIn(
+            bytes.fromhex("f09d9895"),
+            written,
+        )
+
+        self.assertNotIn(
+            bytes.fromhex("f09d988d"),
+            written,
+        )
+
+        # ESC * 24-dot bitmap komutunun gerçekten yazıldığını doğrula.
+        self.assertTrue(
+            any(
+                chunk.startswith(b"\x1b*\x21")
+                for chunk in fake_win32print.writes
+            )
+        )
 
     def test_nf_logo_fallback_uses_plain_ascii_nf(self):
         fake_win32print = FakeWin32Print()
         service = PrinterService()
 
-        with patch.object(printer_module, "win32print", fake_win32print), patch.object(
-            service, "print_bitmap_logo", return_value=False
+        with patch.object(
+            printer_module,
+            "win32print",
+            fake_win32print,
+        ), patch.object(
+            service,
+            "print_bitmap_logo",
+            return_value=False,
         ) as print_bitmap_logo:
-            service.print_raw("TEST_PRINTER", "[NF LOGO]  JH 20018559")
 
-        print_bitmap_logo.assert_called_once_with("TEST_PRINTER", "JH 20018559")
-        written = b"".join(fake_win32print.writes)
-        self.assertIn(b"NF JH 20018559\n", written)
-        self.assertNotIn(b"[NF LOGO]", written)
+            service.print_raw(
+                "TEST_PRINTER",
+                "[NF LOGO]  JH 20018559",
+            )
+
+        print_bitmap_logo.assert_called_once_with(
+            "TEST_PRINTER",
+            "JH 20018559",
+        )
+
+        written = b"".join(
+            fake_win32print.writes
+        )
+
+        self.assertIn(
+            b"NF JH 20018559\n",
+            written,
+        )
+
+        self.assertNotIn(
+            b"[NF LOGO]",
+            written,
+        )
 
 
 if __name__ == "__main__":
