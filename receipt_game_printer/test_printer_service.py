@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import printer_service as printer_module
 from printer_service import (
+    NF_LOGO_BITMAP,
+    NF_LOGO_ESC_STAR,
     NF_LOGO_HEIGHT,
     NF_LOGO_WIDTH,
     PrinterService,
@@ -52,11 +54,38 @@ class PrinterServiceLogoTests(unittest.TestCase):
     def test_nf_logo_is_a_small_nonempty_monogram_without_f_bottom_arm(self):
         pixels = _build_logo_pixels()
 
+        # Boyutlar sabit bir eski tahminden değil,
+        # doğrudan bitmap matrisinden gelmeli.
         self.assertEqual(
-            (NF_LOGO_WIDTH, NF_LOGO_HEIGHT),
-            (58, 18),
+            NF_LOGO_WIDTH,
+            len(NF_LOGO_BITMAP[0]),
         )
 
+        self.assertEqual(
+            NF_LOGO_HEIGHT,
+            len(NF_LOGO_BITMAP),
+        )
+
+        # Logo küçük termal monogram aralığında kalmalı.
+        self.assertGreaterEqual(
+            NF_LOGO_WIDTH,
+            42,
+        )
+        self.assertLessEqual(
+            NF_LOGO_WIDTH,
+            58,
+        )
+
+        self.assertGreaterEqual(
+            NF_LOGO_HEIGHT,
+            14,
+        )
+        self.assertLessEqual(
+            NF_LOGO_HEIGHT,
+            18,
+        )
+
+        # Piksel matrisinin gerçek boyutları bitmap ile eşleşmeli.
         self.assertEqual(
             len(pixels),
             NF_LOGO_HEIGHT,
@@ -69,34 +98,31 @@ class PrinterServiceLogoTests(unittest.TestCase):
             )
         )
 
+        # Kaynak bitmap yalnızca boş/dolu piksel karakterleri içermeli.
+        self.assertTrue(
+            all(
+                set(row) <= {".", "#"}
+                for row in NF_LOGO_BITMAP
+            )
+        )
+
+        # Logo boş olmamalı.
         self.assertGreater(
             sum(map(sum, pixels)),
             0,
         )
 
-        # Son iki satır boş kalmalı.
-        # Böylece eski alt çizgi / underline artefaktı oluşmaz.
-        self.assertFalse(any(pixels[-1]))
-        self.assertFalse(any(pixels[-2]))
+        # Raster veri yanlışlıkla normal ASCII "NF" olmamalı.
+        self.assertNotEqual(
+            NF_LOGO_ESC_STAR,
+            b"NF",
+        )
 
-        # F'nin orta kolunun altında yatay bir alt kol olmamalı.
-        # Aksi halde F, E harfine benzeyebilir.
-        #
-        # Bu bölgede yalnızca N/F bağlantısının eğimli gövdesinden
-        # tek bir piksel bulunmasına izin veriyoruz.
+        # F'nin orta kolunun altında yatay bir alt kol bulunmamalı.
+        # Böylece sembol E harfine dönüşmez.
         for row in pixels[9:]:
-            f_pixels = [
-                x
-                for x in range(
-                    24,
-                    NF_LOGO_WIDTH,
-                )
-                if row[x]
-            ]
-
-            self.assertLessEqual(
-                len(f_pixels),
-                1,
+            self.assertFalse(
+                any(row[24:])
             )
 
     def test_nf_logo_placeholder_is_replaced_before_cp857_text_write(self):
@@ -127,13 +153,13 @@ class PrinterServiceLogoTests(unittest.TestCase):
             fake_win32print.writes
         )
 
-        # Placeholder gerçek RAW çıktıda bulunmamalı.
+        # Placeholder gerçek RAW baskıya gitmemeli.
         self.assertNotIn(
             b"[NF LOGO]",
             written,
         )
 
-        # Firma kodu bitmap değil, normal text olarak kalmalı.
+        # Firma kodu bitmap değil, normal CP857 text olarak kalmalı.
         self.assertIn(
             b" JH 20018559",
             written,
@@ -144,8 +170,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # Unicode / stilize NF karakterleri RAW çıktıya
-        # yanlışlıkla UTF-8 olarak gönderilmemeli.
+        # Stilize Unicode NF karakterleri gönderilmemeli.
         self.assertNotIn(
             bytes.fromhex("f09d9895"),
             written,
@@ -156,7 +181,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # ESC * 24-dot bitmap komutunun gerçekten yazıldığını doğrula.
+        # ESC/POS bitmap komutu gerçekten yazıcıya gönderilmiş olmalı.
         self.assertTrue(
             any(
                 chunk.startswith(b"\x1b*\x21")

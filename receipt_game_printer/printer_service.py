@@ -9,121 +9,89 @@ except ImportError:
     win32print = None
 
 
-NF_LOGO_WIDTH = 58
-NF_LOGO_HEIGHT = 18
+# ---------------------------------------------------------------------------
+# NF LOGO
+#
+# Logo font, Unicode karakter veya koordinat tabanlı çizgi üretimi değildir.
+# Doğrudan elle ayarlanmış sabit 1-bit bitmap kullanılır.
+#
+# "#" = basılacak siyah piksel
+# "." = boş piksel
+# ---------------------------------------------------------------------------
 
+NF_LOGO_BITMAP = (
+    "..........................##########..........",
+    ".........##..............#..........##########",
+    ".......##..#.............#....................",
+    "......#.....#...........#.....................",
+    "......#......#.........#......................",
+    ".....#........#........#..........#####.......",
+    "....#..........#......#...########............",
+    "....#..........#......####....................",
+    "...#............#....#........................",
+    "...#.............#..#.........................",
+    "..#...............###.........................",
+    ".#.................#..........................",
+    ".#............................................",
+    "#.............................................",
+)
 
-def _new_canvas(width: int, height: int) -> list[list[int]]:
-    return [[0 for _ in range(width)] for _ in range(height)]
-
-
-def _set_pixel(pixels: list[list[int]], x: int, y: int) -> None:
-    if 0 <= y < len(pixels) and 0 <= x < len(pixels[0]):
-        pixels[y][x] = 1
-
-
-def _thick_line(
-    pixels: list[list[int]],
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-    thickness: int = 1,
-) -> None:
-    dx = abs(x1 - x0)
-    dy = -abs(y1 - y0)
-    sx = 1 if x0 < x1 else -1
-    sy = 1 if y0 < y1 else -1
-    err = dx + dy
-    x, y = x0, y0
-
-    while True:
-        for ox in range(-thickness, thickness + 1):
-            for oy in range(-thickness, thickness + 1):
-                _set_pixel(pixels, x + ox, y + oy)
-
-        if x == x1 and y == y1:
-            break
-
-        e2 = 2 * err
-
-        if e2 >= dy:
-            err += dy
-            x += sx
-
-        if e2 <= dx:
-            err += dx
-            y += sy
+NF_LOGO_HEIGHT = len(NF_LOGO_BITMAP)
+NF_LOGO_WIDTH = len(NF_LOGO_BITMAP[0])
 
 
 def _build_logo_pixels() -> list[list[int]]:
-    pixels = _new_canvas(NF_LOGO_WIDTH, NF_LOGO_HEIGHT)
+    """
+    Sabit NF bitmap'ini 1-bit piksel matrisine dönüştür.
 
-    # Compact, single-stroke italic NF monogram.
-    #
-    # N'nin sağ yükselen çizgisi aynı zamanda F'nin başlangıç gövdesi
-    # olarak kullanılır. Böylece iki ayrı normal "N" ve "F" karakteri
-    # yerine referans fişteki gibi bağlantılı tek bir sembol elde edilir.
-    #
-    # thickness=0 kullanılması bilinçlidir:
-    # _thick_line fonksiyonunda bu değer gerçek 1 piksel çizgi üretir.
-    # Böylece logo gereksiz şekilde bold görünmez.
+    Font, Unicode, Pillow veya çizgi algoritması kullanılmaz.
+    """
 
-    # N: kısa sol yükselen stroke.
-    _thick_line(
-        pixels,
-        2,
-        15,
-        7,
-        2,
-        thickness=0,
-    )
+    if not NF_LOGO_BITMAP:
+        raise ValueError("NF logo bitmap is empty")
 
-    # N: aşağı inen ana diagonal.
-    _thick_line(
-        pixels,
-        7,
-        2,
-        20,
-        15,
-        thickness=0,
-    )
+    if NF_LOGO_WIDTH <= 0:
+        raise ValueError("NF logo bitmap width must be greater than zero")
 
-    # N'nin sağ yükselen çizgisi / F ile paylaşılan bağlantı.
-    _thick_line(
-        pixels,
-        20,
-        15,
-        27,
-        2,
-        thickness=0,
-    )
+    if any(len(row) != NF_LOGO_WIDTH for row in NF_LOGO_BITMAP):
+        raise ValueError(
+            "NF logo bitmap rows must have equal width"
+        )
 
-    # F: üst kol.
-    _thick_line(
-        pixels,
-        27,
-        2,
-        55,
-        2,
-        thickness=0,
-    )
+    invalid_pixels = {
+        pixel
+        for row in NF_LOGO_BITMAP
+        for pixel in row
+        if pixel not in {"#", "."}
+    }
 
-    # F: orta kol.
-    # Bilerek alt kol eklenmez; böylece F, E harfine dönüşmez.
-    _thick_line(
-        pixels,
-        24,
-        8,
-        46,
-        8,
-        thickness=0,
-    )
+    if invalid_pixels:
+        raise ValueError(
+            "NF logo bitmap may contain only '#' and '.'"
+        )
 
-    return pixels
+    return [
+        [
+            1 if pixel == "#" else 0
+            for pixel in row
+        ]
+        for row in NF_LOGO_BITMAP
+    ]
 
 
-def _pack_esc_star_24dot(pixels: list[list[int]]) -> bytes:
+def _pack_esc_star_24dot(
+    pixels: list[list[int]],
+) -> bytes:
+    """
+    1-bit logo matrisini ESC/POS ESC * 24-dot formatına dönüştür.
+    """
+
+    if not pixels:
+        raise ValueError("Logo pixel matrix is empty")
+
+    if not pixels[0]:
+        raise ValueError("Logo pixel matrix width is zero")
+
     height = len(pixels)
     width = len(pixels[0])
 
@@ -132,8 +100,14 @@ def _pack_esc_star_24dot(pixels: list[list[int]]) -> bytes:
             "ESC * 24-dot logo height must be 24 pixels or less"
         )
 
+    if any(len(row) != width for row in pixels):
+        raise ValueError(
+            "Logo pixel rows must have equal width"
+        )
+
     data = bytearray()
 
+    # ESC * 24-dot verisi sütun bazlı hazırlanır.
     for x in range(width):
         for block in range(3):
             value = 0
@@ -171,10 +145,19 @@ class PrinterService:
             | win32print.PRINTER_ENUM_CONNECTIONS
         )
 
-        return [p[2] for p in printers]
+        return [
+            printer[2]
+            for printer in printers
+        ]
 
-    def printer_exists(self, printer_name: str) -> bool:
-        return printer_name.strip() in self.list_printers()
+    def printer_exists(
+        self,
+        printer_name: str,
+    ) -> bool:
+        return (
+            printer_name.strip()
+            in self.list_printers()
+        )
 
     def print_raw(
         self,
@@ -183,48 +166,72 @@ class PrinterService:
         _logo_path: str | Path | None = None,
     ) -> None:
         if win32print is None:
-            raise RuntimeError("pywin32 yüklü değil.")
+            raise RuntimeError(
+                "pywin32 yüklü değil."
+            )
 
         if not self.printer_exists(printer_name):
             raise RuntimeError(
                 "Yazıcı bulunamadı veya bağlı değil."
             )
 
-        h_printer = win32print.OpenPrinter(printer_name)
+        h_printer = win32print.OpenPrinter(
+            printer_name
+        )
 
         try:
             win32print.StartDocPrinter(
                 h_printer,
                 1,
-                ("Oyun Fişi", None, "RAW"),
+                (
+                    "Oyun Fişi",
+                    None,
+                    "RAW",
+                ),
             )
 
             try:
-                win32print.StartPagePrinter(h_printer)
+                win32print.StartPagePrinter(
+                    h_printer
+                )
 
                 self._write_receipt_with_optional_logo(
                     h_printer,
                     content,
                 )
 
+                # Fiş sonunda birkaç boş satır ve kesme komutu.
                 win32print.WritePrinter(
                     h_printer,
                     b"\n\n\n\x1dV\x00",
                 )
 
-                win32print.EndPagePrinter(h_printer)
+                win32print.EndPagePrinter(
+                    h_printer
+                )
 
             finally:
-                win32print.EndDocPrinter(h_printer)
+                win32print.EndDocPrinter(
+                    h_printer
+                )
 
         finally:
-            win32print.ClosePrinter(h_printer)
+            win32print.ClosePrinter(
+                h_printer
+            )
 
     def _write_receipt_with_optional_logo(
         self,
         h_printer,
         content: str,
     ) -> None:
+        """
+        Fiş metnini RAW olarak gönderir.
+
+        [NF LOGO] placeholder'ı CP857'e encode edilmeden önce yakalanır.
+        Placeholder'ın kendisi yazıcıya gönderilmez.
+        """
+
         lines = content.splitlines()
         index = 0
 
@@ -239,23 +246,30 @@ class PrinterService:
                     .strip()
                 )
 
-                # Eski formatlarda kod bir sonraki satırda
-                # tutuluyor olabilir. Bu desteği koruyoruz.
+                # Eski fiş formatlarında firma logo kodu
+                # bir sonraki satırda bulunabilir.
                 if (
                     not footer_logo_code
                     and index + 1 < len(lines)
                 ):
-                    next_line = lines[index + 1].strip()
+                    next_line = (
+                        lines[index + 1]
+                        .strip()
+                    )
 
                     if next_line:
-                        footer_logo_code = next_line
+                        footer_logo_code = (
+                            next_line
+                        )
                         index += 1
 
                 if not self.print_bitmap_logo(
                     h_printer,
                     footer_logo_code,
                 ):
-                    print("NF bitmap fallback used")
+                    print(
+                        "NF bitmap fallback used"
+                    )
 
                     fallback = " ".join(
                         part
@@ -268,9 +282,12 @@ class PrinterService:
 
                     win32print.WritePrinter(
                         h_printer,
-                        f"{fallback}\n".encode(
-                            "cp857",
-                            errors="replace",
+                        (
+                            f"{fallback}\n"
+                            .encode(
+                                "cp857",
+                                errors="replace",
+                            )
                         ),
                     )
 
@@ -279,9 +296,12 @@ class PrinterService:
 
             win32print.WritePrinter(
                 h_printer,
-                f"{line}\n".encode(
-                    "cp857",
-                    errors="replace",
+                (
+                    f"{line}\n"
+                    .encode(
+                        "cp857",
+                        errors="replace",
+                    )
                 ),
             )
 
@@ -293,45 +313,62 @@ class PrinterService:
         footer_logo_code: str = "",
     ) -> bool:
         """
-        Print the embedded NF bitmap and then print the firm
-        code as ordinary CP857 text.
+        Sabit NF bitmap logosunu basar.
 
-        The NF mark is never encoded as Unicode/text.
+        Firma kodu bitmap içine gömülmez.
+        Kod NF logosundan sonra normal CP857 text olarak gönderilir.
+
+        Örnek:
+            [NF BITMAP] JH 20018559
         """
+
         if not NF_LOGO_ESC_STAR:
             return False
 
-        code = footer_logo_code.strip().upper()
-
-        # Center alignment.
-        win32print.WritePrinter(
-            h_printer,
-            b"\x1ba\x01",
+        code = (
+            footer_logo_code
+            .strip()
+            .upper()
         )
 
-        # Embedded NF raster/ESC-* data.
-        win32print.WritePrinter(
-            h_printer,
-            NF_LOGO_ESC_STAR,
-        )
-
-        # Firma kodu raster yapılmaz; normal CP857 text kalır.
-        if code:
+        try:
+            # Ortala.
             win32print.WritePrinter(
                 h_printer,
-                f" {code}".encode(
-                    "cp857",
-                    errors="replace",
-                ),
+                b"\x1ba\x01",
             )
 
-        # Yeni satır + tekrar sol hizalama.
-        win32print.WritePrinter(
-            h_printer,
-            b"\n\x1ba\x00",
+            # NF bitmap.
+            win32print.WritePrinter(
+                h_printer,
+                NF_LOGO_ESC_STAR,
+            )
+
+            # Firma kodu bitmap değildir.
+            if code:
+                win32print.WritePrinter(
+                    h_printer,
+                    f" {code}".encode(
+                        "cp857",
+                        errors="replace",
+                    ),
+                )
+
+            # Yeni satır ve tekrar sol hizalama.
+            win32print.WritePrinter(
+                h_printer,
+                b"\n\x1ba\x00",
+            )
+
+        except Exception:
+            # Raster gönderimi başarısız olursa üst katman
+            # güvenli ASCII "NF" fallback'ini kullanabilir.
+            return False
+
+        print(
+            "NF bitmap logo printed"
         )
 
-        print("NF bitmap logo printed")
         return True
 
     def save_txt(
@@ -345,7 +382,10 @@ class PrinterService:
             exist_ok=True,
         )
 
-        path = output_dir / filename
+        path = (
+            output_dir
+            / filename
+        )
 
         path.write_text(
             content,

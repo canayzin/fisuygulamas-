@@ -364,8 +364,10 @@ def build_receipt_text(
         and data.trade_registry_no
     ):
         rows.append(
-            f"T.SICIL NO:"
-            f"{data.trade_registry_no}"[:width]
+            (
+                f"T.SICIL NO:"
+                f"{data.trade_registry_no}"
+            )[:width]
         )
 
     # Firma bazlı EKU/Z kullanımı açıksa
@@ -388,8 +390,7 @@ def build_receipt_text(
         else template.z_no
     )
 
-    # Template'in desteklediği placeholder'ları
-    # gerçek ReceiptData değerleriyle doldur.
+    # Template içindeki placeholder'ları doğru değerlerle doldur.
     try:
         eku_text = template.eku_format.format(
             game_code=data.game_code,
