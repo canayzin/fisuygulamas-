@@ -56,6 +56,7 @@ class App:
         self.vat_var = tk.StringVar(value="20")
         self.pay_var = tk.StringVar(value="NAKIT")
         self.receipt_no_var = tk.StringVar(value="1")
+        self.batch_receipt_no_var = tk.StringVar(value="1")
         self.manual_printer_var = tk.StringVar()
         self.selected_printer_var = tk.StringVar()
 
@@ -167,6 +168,7 @@ class App:
         content.pack(fill="both", expand=True, padx=4, pady=4)
 
         self._add_entry(content, "Fiş sayısı", self.batch_count_var)
+        self._add_entry(content, "Seri Fiş No Başlangıç", self.batch_receipt_no_var)
         ttk.Label(content, text="Firma seçim modu").pack(anchor="w")
         ttk.Combobox(content, textvariable=self.mode_var, values=["Sırayla", "Rastgele", "Tek firma"], state="readonly").pack(fill="x")
         ttk.Checkbutton(content, text="Aynı firma üst üste gelmesin", variable=self.no_repeat_var).pack(anchor="w", pady=4)
@@ -289,7 +291,7 @@ class App:
         self._add_entry(parent, "Ürün/Hizmet", self.product_var)
         self._add_entry(parent, "Tutar", self.amount_var)
         self._add_entry(parent, "KDV", self.vat_var)
-        self._add_entry(parent, "Fiş No Başlangıç", self.receipt_no_var)
+        self._add_entry(parent, "Tek Fiş No Başlangıç", self.receipt_no_var)
         ttk.Label(parent, text="Ödeme Tipi").pack(anchor="w")
         ttk.Combobox(parent, textvariable=self.pay_var, values=["NAKIT", "KART", "OYUN PARASI"], state="readonly").pack(fill="x")
 
@@ -435,6 +437,10 @@ class App:
             phone2=firm.phone2,
             website=firm.website,
             tax_office=firm.tax_office,
+            trade_registry_no=firm.trade_registry_no,
+            eku_no=firm.eku_no,
+            z_no=firm.z_no,
+            footer_logo_code=firm.footer_logo_code,
             game_code=firm.game_code,
             receipt_no=receipt_no,
             dt=dt,
@@ -605,7 +611,7 @@ class App:
     def _run_batch(self, count: int):
         try:
             printer = self._validate_printer()
-            start_no = int(self.receipt_no_var.get())
+            start_no = int(self.batch_receipt_no_var.get())
             firms = self._pick_firm_sequence(count)
             random_datetimes = self._batch_random_datetimes(count)
             dt = self._initial_batch_datetime() if random_datetimes is None else random_datetimes[0]
