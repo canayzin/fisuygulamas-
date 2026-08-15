@@ -12,28 +12,39 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # NF LOGO
 #
-# Logo font, Unicode karakter veya koordinat tabanlı çizgi üretimi değildir.
-# Doğrudan elle ayarlanmış sabit 1-bit bitmap kullanılır.
+# Sabit, elle ayarlanmış 1-bit bitmap.
 #
-# "#" = basılacak siyah piksel
+# "#" = siyah termal piksel
 # "." = boş piksel
+#
+# Font, Unicode, Pillow, PNG veya koordinat tabanlı çizgi üretimi kullanılmaz.
 # ---------------------------------------------------------------------------
 
 NF_LOGO_BITMAP = (
-    "..........................##########..........",
-    ".........##..............#..........##########",
-    ".......##..#.............#....................",
-    "......#.....#...........#.....................",
-    "......#......#.........#......................",
-    ".....#........#........#..........#####.......",
-    "....#..........#......#...########............",
-    "....#..........#......####....................",
-    "...#............#....#........................",
-    "...#.............#..#.........................",
-    "..#...............###.........................",
-    ".#.................#..........................",
-    ".#............................................",
-    "#.............................................",
+    "....................................................................",
+    "...............###..................................................",
+    "..............#####....................#############################",
+    "..............######...................#############################",
+    ".............#######..................##############################",
+    "............#########.................#####.........................",
+    "...........#####.#####...............#####..........................",
+    "...........####...#####.............######..........................",
+    "..........####.....#####...........#######..........................",
+    ".........#####......#####.........##########################........",
+    "........#####........####.........##########################........",
+    "........####..........####.......###########################........",
+    ".......####...........#####.....########............................",
+    "......#####............#####...#####.###............................",
+    ".....#####..............#####.#####.####............................",
+    ".....####................####.####..####............................",
+    "....####..................#######...###.............................",
+    "...#####..................#######..####.............................",
+    "..#####....................#####...####.............................",
+    "..####......................###....###..............................",
+    ".####.............................####..............................",
+    ".####.............................####..............................",
+    ".###..............................###...............................",
+    "..................................###...............................",
 )
 
 NF_LOGO_HEIGHT = len(NF_LOGO_BITMAP)
@@ -44,7 +55,7 @@ def _build_logo_pixels() -> list[list[int]]:
     """
     Sabit NF bitmap'ini 1-bit piksel matrisine dönüştür.
 
-    Font, Unicode, Pillow veya çizgi algoritması kullanılmaz.
+    Font, Unicode, Pillow veya geometrik çizgi üretimi kullanılmaz.
     """
 
     if not NF_LOGO_BITMAP:
@@ -53,7 +64,15 @@ def _build_logo_pixels() -> list[list[int]]:
     if NF_LOGO_WIDTH <= 0:
         raise ValueError("NF logo bitmap width must be greater than zero")
 
-    if any(len(row) != NF_LOGO_WIDTH for row in NF_LOGO_BITMAP):
+    if NF_LOGO_HEIGHT > 24:
+        raise ValueError(
+            "NF logo bitmap height must be 24 pixels or less"
+        )
+
+    if any(
+        len(row) != NF_LOGO_WIDTH
+        for row in NF_LOGO_BITMAP
+    ):
         raise ValueError(
             "NF logo bitmap rows must have equal width"
         )
@@ -83,14 +102,18 @@ def _pack_esc_star_24dot(
     pixels: list[list[int]],
 ) -> bytes:
     """
-    1-bit logo matrisini ESC/POS ESC * 24-dot formatına dönüştür.
+    1-bit bitmap'i ESC/POS ESC * 24-dot formatına dönüştür.
     """
 
     if not pixels:
-        raise ValueError("Logo pixel matrix is empty")
+        raise ValueError(
+            "Logo pixel matrix is empty"
+        )
 
     if not pixels[0]:
-        raise ValueError("Logo pixel matrix width is zero")
+        raise ValueError(
+            "Logo pixel matrix width is zero"
+        )
 
     height = len(pixels)
     width = len(pixels[0])
@@ -100,14 +123,18 @@ def _pack_esc_star_24dot(
             "ESC * 24-dot logo height must be 24 pixels or less"
         )
 
-    if any(len(row) != width for row in pixels):
+    if any(
+        len(row) != width
+        for row in pixels
+    ):
         raise ValueError(
             "Logo pixel rows must have equal width"
         )
 
     data = bytearray()
 
-    # ESC * 24-dot verisi sütun bazlı hazırlanır.
+    # ESC * 24-dot veri yapısı sütun bazlıdır.
+    # Her sütun için 3 byte = 24 dikey piksel.
     for x in range(width):
         for block in range(3):
             value = 0
@@ -115,7 +142,10 @@ def _pack_esc_star_24dot(
             for bit in range(8):
                 y = block * 8 + bit
 
-                if y < height and pixels[y][x]:
+                if (
+                    y < height
+                    and pixels[y][x]
+                ):
                     value |= 0x80 >> bit
 
             data.append(value)
@@ -170,7 +200,9 @@ class PrinterService:
                 "pywin32 yüklü değil."
             )
 
-        if not self.printer_exists(printer_name):
+        if not self.printer_exists(
+            printer_name
+        ):
             raise RuntimeError(
                 "Yazıcı bulunamadı veya bağlı değil."
             )
@@ -200,7 +232,7 @@ class PrinterService:
                     content,
                 )
 
-                # Fiş sonunda birkaç boş satır ve kesme komutu.
+                # Birkaç boş satır + kesme komutu.
                 win32print.WritePrinter(
                     h_printer,
                     b"\n\n\n\x1dV\x00",
@@ -226,10 +258,9 @@ class PrinterService:
         content: str,
     ) -> None:
         """
-        Fiş metnini RAW olarak gönderir.
+        [NF LOGO] placeholder'ını metne çevrilmeden önce yakala.
 
-        [NF LOGO] placeholder'ı CP857'e encode edilmeden önce yakalanır.
-        Placeholder'ın kendisi yazıcıya gönderilmez.
+        Placeholder hiçbir zaman CP857 metni olarak yazıcıya gitmez.
         """
 
         lines = content.splitlines()
@@ -246,8 +277,8 @@ class PrinterService:
                     .strip()
                 )
 
-                # Eski fiş formatlarında firma logo kodu
-                # bir sonraki satırda bulunabilir.
+                # Eski formatlarda firma kodu bir sonraki
+                # satırda bulunabiliyor.
                 if (
                     not footer_logo_code
                     and index + 1 < len(lines)
@@ -282,12 +313,9 @@ class PrinterService:
 
                     win32print.WritePrinter(
                         h_printer,
-                        (
-                            f"{fallback}\n"
-                            .encode(
-                                "cp857",
-                                errors="replace",
-                            )
+                        f"{fallback}\n".encode(
+                            "cp857",
+                            errors="replace",
                         ),
                     )
 
@@ -296,12 +324,9 @@ class PrinterService:
 
             win32print.WritePrinter(
                 h_printer,
-                (
-                    f"{line}\n"
-                    .encode(
-                        "cp857",
-                        errors="replace",
-                    )
+                f"{line}\n".encode(
+                    "cp857",
+                    errors="replace",
                 ),
             )
 
@@ -313,13 +338,10 @@ class PrinterService:
         footer_logo_code: str = "",
     ) -> bool:
         """
-        Sabit NF bitmap logosunu basar.
+        NF bitmap logosunu RAW olarak bas.
 
-        Firma kodu bitmap içine gömülmez.
-        Kod NF logosundan sonra normal CP857 text olarak gönderilir.
-
-        Örnek:
-            [NF BITMAP] JH 20018559
+        Firma kodu rasterlaştırılmaz; logodan sonra normal CP857
+        metni olarak gönderilir.
         """
 
         if not NF_LOGO_ESC_STAR:
@@ -344,7 +366,7 @@ class PrinterService:
                 NF_LOGO_ESC_STAR,
             )
 
-            # Firma kodu bitmap değildir.
+            # Firma kodu normal text.
             if code:
                 win32print.WritePrinter(
                     h_printer,
@@ -354,15 +376,15 @@ class PrinterService:
                     ),
                 )
 
-            # Yeni satır ve tekrar sol hizalama.
+            # Satırı bitir ve tekrar sola hizala.
             win32print.WritePrinter(
                 h_printer,
                 b"\n\x1ba\x00",
             )
 
         except Exception:
-            # Raster gönderimi başarısız olursa üst katman
-            # güvenli ASCII "NF" fallback'ini kullanabilir.
+            # Bitmap basılamazsa üst fonksiyon ASCII NF fallback
+            # kullanacak.
             return False
 
         print(
