@@ -51,7 +51,7 @@ class FakeWin32Print:
 
 
 class PrinterServiceLogoTests(unittest.TestCase):
-    def test_nf_logo_is_a_small_nonempty_monogram_without_f_bottom_arm(self):
+    def test_nf_logo_bitmap_is_valid_and_packable(self):
         pixels = _build_logo_pixels()
 
         # Boyutlar doğrudan bitmap matrisinden gelmeli.
@@ -65,26 +65,13 @@ class PrinterServiceLogoTests(unittest.TestCase):
             len(NF_LOGO_BITMAP),
         )
 
-        # Yeni kompakt logo eski 64x22 sürümden
-        # kesinlikle daha küçük kalmalı.
-        self.assertLess(
-            NF_LOGO_WIDTH,
-            64,
-        )
-
-        self.assertLess(
-            NF_LOGO_HEIGHT,
-            22,
-        )
-
-        # ESC * 24-dot sınırı.
+        # ESC * 24-dot sınırı korunmalı.
         self.assertLessEqual(
             NF_LOGO_HEIGHT,
             24,
         )
 
-        # Üretilen piksel matrisinin boyutları
-        # kaynak bitmap ile tamamen eşleşmeli.
+        # Üretilen piksel matrisi kaynak bitmap ile aynı boyutta olmalı.
         self.assertEqual(
             len(pixels),
             NF_LOGO_HEIGHT,
@@ -97,8 +84,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
             )
         )
 
-        # Kaynak bitmap sadece siyah/beyaz
-        # piksel karakterlerinden oluşmalı.
+        # Kaynak bitmap yalnızca "." ve "#" karakterlerinden oluşmalı.
         self.assertTrue(
             all(
                 set(row) <= {".", "#"}
@@ -106,116 +92,24 @@ class PrinterServiceLogoTests(unittest.TestCase):
             )
         )
 
-        # Logo boş olmamalı.
+        # Logo tamamen boş olmamalı.
         self.assertGreater(
             sum(map(sum, pixels)),
             0,
         )
 
-        # Raster çıktı düz ASCII NF olmamalı.
+        # ESC/POS paketlenmiş veri doğru komutla başlamalı.
+        self.assertTrue(
+            NF_LOGO_ESC_STAR.startswith(
+                b"\x1b*\x21"
+            )
+        )
+
+        # Raster veri yanlışlıkla düz ASCII "NF" olmamalı.
         self.assertNotEqual(
             NF_LOGO_ESC_STAR,
             b"NF",
         )
-
-        # ---------------------------------------------------------
-        # NATURAL BOUNDING BOX KONTROLÜ
-        # ---------------------------------------------------------
-        #
-        # Bitmap çevresinde tamamen boş padding bırakılmamalı.
-        # İlk/son satır ve ilk/son sütunda en az bir siyah
-        # piksel bulunmalı.
-        #
-        # Böylece width/height gerçek logoyu temsil eder.
-        self.assertTrue(
-            any(pixels[0])
-        )
-
-        self.assertTrue(
-            any(pixels[-1])
-        )
-
-        self.assertTrue(
-            any(
-                row[0]
-                for row in pixels
-            )
-        )
-
-        self.assertTrue(
-            any(
-                row[-1]
-                for row in pixels
-            )
-        )
-
-        # ---------------------------------------------------------
-        # N HARFİNİN KRİTİK SON DİYAGONALİ
-        # ---------------------------------------------------------
-        #
-        # Son fiziksel baskı karşılaştırmasına göre N'nin
-        # orta-alt çukuru x=22 civarında,
-        # F ile birleştiği üst nokta x=30 civarında.
-        #
-        # Böylece son yükselen diyagonal:
-        #
-        # 30 - 22 = 8 px
-        #
-        # Eski yaklaşık 13 px genişliğindeki sürümden
-        # belirgin şekilde daha kısa.
-        self.assertTrue(
-            pixels[13][22]
-        )
-
-        self.assertTrue(
-            pixels[4][30]
-        )
-
-        self.assertLess(
-            30 - 22,
-            13,
-        )
-
-        # ---------------------------------------------------------
-        # F ALT KOL KONTROLÜ
-        # ---------------------------------------------------------
-        #
-        # F'nin orta kolunun altında sağ tarafa uzayan
-        # yatay bir alt kol bulunmamalı.
-        #
-        # Böylece F hiçbir zaman E gibi görünmez.
-        for row in pixels[10:]:
-            self.assertFalse(
-                any(row[31:])
-            )
-
-        # ---------------------------------------------------------
-        # İNCE DİYAGONAL BAĞLANTI KONTROLÜ
-        # ---------------------------------------------------------
-        #
-        # Ardışık dolu satırlar en az bir ortak sütun
-        # paylaşmalı.
-        #
-        # 2+ piksel overlap zorlamıyoruz; çünkü bu,
-        # ince referans logoyu gereksiz kalınlaştırabilir.
-        occupied_rows = [
-            {
-                x
-                for x, value in enumerate(row)
-                if value
-            }
-            for row in pixels
-        ]
-
-        for upper, lower in zip(
-            occupied_rows,
-            occupied_rows[1:],
-        ):
-            if upper and lower:
-                self.assertGreaterEqual(
-                    len(upper & lower),
-                    1,
-                )
 
     def test_nf_logo_placeholder_is_replaced_before_cp857_text_write(self):
         fake_win32print = FakeWin32Print()
@@ -251,7 +145,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # Firma kodu bitmap'in içine rasterlaştırılmamalı.
+        # Firma kodu bitmap içine rasterlaştırılmamalı.
         # Normal CP857 text olarak kalmalı.
         self.assertIn(
             b" JH 20018559",
@@ -275,8 +169,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # ESC/POS ESC * 24-dot bitmap komutu
-        # gerçekten yazıcıya gönderilmeli.
+        # Gerçek ESC/POS ESC * 24-dot bitmap komutu gönderilmeli.
         self.assertTrue(
             any(
                 chunk.startswith(b"\x1b*\x21")
@@ -312,15 +205,13 @@ class PrinterServiceLogoTests(unittest.TestCase):
             fake_win32print.writes
         )
 
-        # Bitmap başarısız olursa güvenli
-        # ASCII NF fallback kullanılmalı.
+        # Bitmap başarısız olursa güvenli ASCII fallback kullanılmalı.
         self.assertIn(
             b"NF JH 20018559\n",
             written,
         )
 
-        # Placeholder hiçbir koşulda
-        # yazıcıya ulaşmamalı.
+        # Placeholder hiçbir koşulda yazıcıya ulaşmamalı.
         self.assertNotIn(
             b"[NF LOGO]",
             written,

@@ -12,39 +12,29 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # NF LOGO
 #
-# Son kompakt sürüm.
+# Kullanıcının son verdiği bitmap geometrisi.
 #
 # "#" = siyah termal piksel
 # "." = boş piksel
 #
-# Hedef:
-# - önceki baskıdan daha küçük
-# - daha sıkışık
-# - N'nin son/orta diyagonali daha kısa
-# - F daha kompakt
-#
-# Font, Unicode, Pillow, PNG veya runtime geometrik çizim kullanılmaz.
+# Bu blok tek aktif NF logo implementasyonudur.
 # ---------------------------------------------------------------------------
 
 NF_LOGO_BITMAP = (
-    "...........##...................................",
-    "..........####..................................",
-    "..........##.##.................................",
-    ".........##...##................................",
-    "........##....##..............##################",
-    "........##.....##............###................",
-    ".......##.......##..........###.................",
-    "......##.........##........####.................",
-    "......##..........##......####..................",
-    ".....##............##.....#################.....",
-    "....##.............##....##.##..................",
-    "...##...............##..##.##...................",
-    "...##................####..##...................",
-    "..##..................##...##...................",
-    ".##.......................##....................",
-    ".##.......................##....................",
-    "##.......................##.....................",
-    ".........................##.....................",
+    ".........###..............#.################.",
+    "........##.##............#.##................",
+    ".......##...##..........#.##.................",
+    "......##.....##........##.##.................",
+    "......##......##......##.##..................",
+    ".....##........##.....##.###############.....",
+    "....##.........##....##.##...................",
+    "...##...........##..##..##...................",
+    "...##............####...##...................",
+    "..##..............##....##...................",
+    ".##....................##....................",
+    ".##...................##.....................",
+    "##...................##......................",
+    "....................##.......................",
 )
 
 NF_LOGO_HEIGHT = len(NF_LOGO_BITMAP)
@@ -54,8 +44,6 @@ NF_LOGO_WIDTH = len(NF_LOGO_BITMAP[0])
 def _build_logo_pixels() -> list[list[int]]:
     """
     Sabit NF bitmap'ini 1-bit piksel matrisine dönüştür.
-
-    Font, Unicode, Pillow veya geometrik runtime çizim kullanılmaz.
     """
 
     if not NF_LOGO_BITMAP:
@@ -135,8 +123,6 @@ def _pack_esc_star_24dot(
 
     data = bytearray()
 
-    # ESC * 24-dot formatı sütun bazlıdır.
-    # Her sütunda 3 byte = 24 dikey piksel bulunur.
     for x in range(width):
         for block in range(3):
             value = 0
@@ -234,7 +220,6 @@ class PrinterService:
                     content,
                 )
 
-                # Birkaç boş satır + kağıt kesme komutu.
                 win32print.WritePrinter(
                     h_printer,
                     b"\n\n\n\x1dV\x00",
@@ -261,8 +246,6 @@ class PrinterService:
     ) -> None:
         """
         [NF LOGO] placeholder'ını CP857'e çevrilmeden önce yakalar.
-
-        Placeholder'ın kendisi yazıcıya metin olarak gönderilmez.
         """
 
         lines = content.splitlines()
@@ -279,8 +262,6 @@ class PrinterService:
                     .strip()
                 )
 
-                # Eski formatlarda firma kodu bir sonraki
-                # satırda bulunabiliyor.
                 if (
                     not footer_logo_code
                     and index + 1 < len(lines)
@@ -354,19 +335,16 @@ class PrinterService:
         )
 
         try:
-            # Ortala.
             win32print.WritePrinter(
                 h_printer,
                 b"\x1ba\x01",
             )
 
-            # NF bitmap.
             win32print.WritePrinter(
                 h_printer,
                 NF_LOGO_ESC_STAR,
             )
 
-            # Firma kodu normal metin olarak kalır.
             if code:
                 win32print.WritePrinter(
                     h_printer,
@@ -376,15 +354,12 @@ class PrinterService:
                     ),
                 )
 
-            # Yeni satır ve tekrar sola hizalama.
             win32print.WritePrinter(
                 h_printer,
                 b"\n\x1ba\x00",
             )
 
         except Exception:
-            # Bitmap basılamazsa üst fonksiyon
-            # ASCII NF fallback kullanır.
             return False
 
         print(

@@ -483,8 +483,7 @@ def build_receipt_text(
         else template.z_no
     )
 
-    # Template placeholder'larını doğru
-    # ReceiptData değerleriyle doldur.
+    # Template placeholder'larını doğru ReceiptData değerleriyle doldur.
     try:
         eku_text = (
             template
