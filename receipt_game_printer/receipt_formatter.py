@@ -45,7 +45,10 @@ def format_money(value: float) -> str:
     return f"*{formatted}"
 
 
-def center(text: str, width: int = RECEIPT_WIDTH) -> str:
+def center(
+    text: str,
+    width: int = RECEIPT_WIDTH,
+) -> str:
     return text[:width].center(width)
 
 
@@ -58,17 +61,29 @@ def left_right(
     space = width - len(left) - len(right)
 
     if space < 1:
-        left = left[: max(width - len(right) - 1, 0)]
+        left = left[
+            : max(width - len(right) - 1, 0)
+        ]
         space = 1
 
-    return f"{left}{' ' * space}{right}"[:width]
+    return (
+        f"{left}"
+        f"{' ' * space}"
+        f"{right}"
+    )[:width]
 
 
-def _fit_line(text: str, width: int) -> str:
+def _fit_line(
+    text: str,
+    width: int,
+) -> str:
     return text[:width]
 
 
-def _wrap_line(text: str, width: int) -> list[str]:
+def _wrap_line(
+    text: str,
+    width: int,
+) -> list[str]:
     if not text:
         return []
 
@@ -85,17 +100,29 @@ def _format_product_line(
     amount_text: str,
     width: int,
 ) -> str:
-    product = data.product_name[: max(width - 14, 8)]
+    product = data.product_name[
+        : max(width - 14, 8)
+    ]
     vat = f"%{int(data.vat_rate)}"
     amount_col = amount_text[-10:]
 
     middle_width = max(
-        width - len(product) - len(vat) - len(amount_col),
+        width
+        - len(product)
+        - len(vat)
+        - len(amount_col),
         2,
     )
 
-    left_gap = max(middle_width // 2, 1)
-    right_gap = max(middle_width - left_gap, 1)
+    left_gap = max(
+        middle_width // 2,
+        1,
+    )
+
+    right_gap = max(
+        middle_width - left_gap,
+        1,
+    )
 
     return (
         f"{product}"
@@ -113,16 +140,27 @@ def _contact_lines(
     lines: list[str] = []
 
     if template.show_phone and data.phone1:
-        lines.append(f"TEL: {data.phone1}")
+        lines.append(
+            f"TEL: {data.phone1}"
+        )
 
     if template.show_phone2 and data.phone2:
-        lines.append(f"TEL 2: {data.phone2}")
+        lines.append(
+            f"TEL 2: {data.phone2}"
+        )
 
     if template.show_website and data.website:
-        lines.append(f"WEB: {data.website}")
+        lines.append(
+            f"WEB: {data.website}"
+        )
 
-    if template.show_tax_office and data.tax_office:
-        lines.append(data.tax_office)
+    if (
+        template.show_tax_office
+        and data.tax_office
+    ):
+        lines.append(
+            data.tax_office
+        )
 
     return lines
 
@@ -139,11 +177,18 @@ def _address_lines(
             data.address_line2,
         )
         if line
-    ] or ([data.address] if data.address else [])
+    ] or (
+        [data.address]
+        if data.address
+        else []
+    )
 
     if not template.wrap_address:
         return [
-            _fit_line(line, width)
+            _fit_line(
+                line,
+                width,
+            )
             for line in source
         ]
 
@@ -151,7 +196,10 @@ def _address_lines(
 
     for line in source:
         lines.extend(
-            _wrap_line(line, width)
+            _wrap_line(
+                line,
+                width,
+            )
         )
 
     return lines
@@ -164,7 +212,9 @@ def _format_receipt_no(
     if template.receipt_no_zero_pad:
         return f"{data.receipt_no:06d}"
 
-    return str(data.receipt_no)
+    return str(
+        data.receipt_no
+    )
 
 
 def _footer_logo_lines(
@@ -175,11 +225,14 @@ def _footer_logo_lines(
     if not template.show_footer_logo:
         return []
 
-    logo_code = data.footer_logo_code.strip()
+    logo_code = (
+        data.footer_logo_code
+        .strip()
+    )
 
-    # RAW baskı sırasında PrinterService bu placeholder'ı
-    # CP857'e çevrilmeden önce yakalar ve gerçek NF bitmap
-    # logosuyla değiştirir.
+    # RAW baskı sırasında PrinterService
+    # [NF LOGO] placeholder'ını CP857'e
+    # çevrilmeden önce yakalar.
     if template.use_bitmap_nf_logo:
         logo_line = "  ".join(
             part
@@ -190,10 +243,14 @@ def _footer_logo_lines(
             if part
         ).strip()
 
-        return [center(logo_line, width)]
+        return [
+            center(
+                logo_line,
+                width,
+            )
+        ]
 
-    # Bitmap kapalıysa template içerisindeki metinsel
-    # logo/fallback kullanılır.
+    # Bitmap kapalıysa metinsel fallback.
     logo = (
         template.footer_logo_text
         or "NF"
@@ -208,26 +265,39 @@ def _footer_logo_lines(
         if part
     ).strip()
 
-    return (
-        [center(logo_line, width)]
-        if logo_line
-        else []
-    )
+    if not logo_line:
+        return []
+
+    return [
+        center(
+            logo_line,
+            width,
+        )
+    ]
 
 
 def build_receipt_text(
     data: ReceiptData,
     template: ReceiptTemplate | None = None,
 ) -> str:
-    template = template or default_template()
-    validate_template(template)
+    template = (
+        template
+        or default_template()
+    )
+
+    validate_template(
+        template
+    )
 
     width = template.width
 
     vat_amount = (
         data.amount
         * data.vat_rate
-        / (100 + data.vat_rate)
+        / (
+            100
+            + data.vat_rate
+        )
     )
 
     separator_char = (
@@ -235,17 +305,27 @@ def build_receipt_text(
         or "."
     )[0]
 
-    separator = separator_char * min(
-        width,
-        max(width - 2, 1),
+    separator = (
+        separator_char
+        * min(
+            width,
+            max(
+                width - 2,
+                1,
+            ),
+        )
     )
 
     rows: list[str] = []
 
-    # Özel header satırları
+    # Özel header satırları.
     rows.extend(
-        _fit_line(header, width)
-        for header in template.header_lines
+        _fit_line(
+            header,
+            width,
+        )
+        for header
+        in template.header_lines
     )
 
     if (
@@ -254,7 +334,7 @@ def build_receipt_text(
     ):
         rows.append("")
 
-    # Firma başlığı
+    # Firma başlığı.
     header_rows = [
         data.firm_name,
         data.sector,
@@ -296,19 +376,21 @@ def build_receipt_text(
 
     rows.append("")
 
-    # Tarih
+    # Tarih.
     rows.append(
-        data.dt.strftime("%d-%m-%Y")
+        data.dt.strftime(
+            "%d-%m-%Y"
+        )
     )
 
-    # Saat
+    # Saat.
     if template.show_time:
         rows.append(
             f"SAAT: "
             f"{data.dt.strftime('%H:%M')}"
         )
 
-    # Fiş numarası
+    # Fiş numarası.
     if template.show_receipt_no:
         rows.append(
             f"FIS NO : "
@@ -317,48 +399,60 @@ def build_receipt_text(
 
     rows.append("")
 
-    # Ürün
+    # Ürün satırı.
     rows.append(
         _format_product_line(
             data,
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         )
     )
 
-    rows.append(separator)
+    rows.append(
+        separator
+    )
 
-    # KDV
+    # KDV.
     if template.show_vat:
         rows.append(
             left_right(
                 "TOPKDV",
-                format_money(vat_amount),
+                format_money(
+                    vat_amount
+                ),
                 width,
             )
         )
 
-    # Toplam
+    # Toplam.
     rows.append(
         left_right(
             "TOPLAM",
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         )
     )
 
-    rows.append(separator)
+    rows.append(
+        separator
+    )
 
-    # Ödeme şekli
+    # Ödeme şekli.
     rows.append(
         left_right(
             data.payment_type,
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         )
     )
 
-    # Ticaret sicil numarası
+    # Ticaret sicil numarası.
     if (
         template.show_trade_registry_no
         and data.trade_registry_no
@@ -370,8 +464,7 @@ def build_receipt_text(
             )[:width]
         )
 
-    # Firma bazlı EKU/Z kullanımı açıksa
-    # firmadaki değerler önceliklidir.
+    # Firma bazlı EKU / Z değerleri.
     eku_no = (
         data.eku_no
         if (
@@ -390,15 +483,20 @@ def build_receipt_text(
         else template.z_no
     )
 
-    # Template içindeki placeholder'ları doğru değerlerle doldur.
+    # Template placeholder'larını doğru
+    # ReceiptData değerleriyle doldur.
     try:
-        eku_text = template.eku_format.format(
-            game_code=data.game_code,
-            receipt_no=_format_receipt_no(
-                data,
-                template,
-            ),
-            eku_no=eku_no,
+        eku_text = (
+            template
+            .eku_format
+            .format(
+                game_code=data.game_code,
+                receipt_no=_format_receipt_no(
+                    data,
+                    template,
+                ),
+                eku_no=eku_no,
+            )
         )
 
     except (
@@ -406,7 +504,9 @@ def build_receipt_text(
         ValueError,
         IndexError,
     ):
-        eku_text = f"EKU NO: {eku_no}"
+        eku_text = (
+            f"EKU NO: {eku_no}"
+        )
 
     rows.append(
         left_right(
@@ -416,7 +516,7 @@ def build_receipt_text(
         )
     )
 
-    # Footer
+    # Footer.
     if (
         template.show_footer
         and template.footer_lines
@@ -428,10 +528,11 @@ def build_receipt_text(
                 footer,
                 width,
             )
-            for footer in template.footer_lines
+            for footer
+            in template.footer_lines
         )
 
-    # NF bitmap placeholder + firma logo kodu
+    # NF bitmap placeholder + firma logo kodu.
     rows.extend(
         _footer_logo_lines(
             data,
@@ -442,4 +543,6 @@ def build_receipt_text(
 
     rows.append("")
 
-    return "\n".join(rows)
+    return "\n".join(
+        rows
+    )

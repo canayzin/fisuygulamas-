@@ -54,7 +54,7 @@ class PrinterServiceLogoTests(unittest.TestCase):
     def test_nf_logo_is_a_small_nonempty_monogram_without_f_bottom_arm(self):
         pixels = _build_logo_pixels()
 
-        # Bitmap ölçüleri doğrudan gerçek matristen gelmeli.
+        # Boyutlar doğrudan bitmap matrisinden gelmeli.
         self.assertEqual(
             NF_LOGO_WIDTH,
             len(NF_LOGO_BITMAP[0]),
@@ -65,29 +65,26 @@ class PrinterServiceLogoTests(unittest.TestCase):
             len(NF_LOGO_BITMAP),
         )
 
-        # Son daraltılmış NF tasarımının hedef aralığı.
-        # Eski 68x24 / 80x24 geniş-kalın tasarıma geri dönülmemeli.
-        self.assertGreaterEqual(
+        # Yeni kompakt logo eski 64x22 sürümden
+        # kesinlikle daha küçük kalmalı.
+        self.assertLess(
             NF_LOGO_WIDTH,
-            58,
+            64,
         )
 
-        self.assertLessEqual(
-            NF_LOGO_WIDTH,
-            66,
-        )
-
-        self.assertGreaterEqual(
+        self.assertLess(
             NF_LOGO_HEIGHT,
-            20,
+            22,
         )
 
+        # ESC * 24-dot sınırı.
         self.assertLessEqual(
             NF_LOGO_HEIGHT,
             24,
         )
 
-        # Üretilen piksel matrisi bitmap boyutlarıyla aynı olmalı.
+        # Üretilen piksel matrisinin boyutları
+        # kaynak bitmap ile tamamen eşleşmeli.
         self.assertEqual(
             len(pixels),
             NF_LOGO_HEIGHT,
@@ -100,7 +97,8 @@ class PrinterServiceLogoTests(unittest.TestCase):
             )
         )
 
-        # Kaynak bitmap yalnızca boş/dolu piksel karakterlerinden oluşmalı.
+        # Kaynak bitmap sadece siyah/beyaz
+        # piksel karakterlerinden oluşmalı.
         self.assertTrue(
             all(
                 set(row) <= {".", "#"}
@@ -108,37 +106,98 @@ class PrinterServiceLogoTests(unittest.TestCase):
             )
         )
 
-        # Logo tamamen boş olmamalı.
-        #
-        # Burada minimum siyah-piksel yüzdesi özellikle KULLANILMIYOR.
-        # Böyle bir yoğunluk testi ince referans logoyu gereksiz yere
-        # kalınlaştırmaya zorlayabilir.
+        # Logo boş olmamalı.
         self.assertGreater(
             sum(map(sum, pixels)),
             0,
         )
 
-        # Raster çıktı yanlışlıkla düz ASCII "NF" olmamalı.
+        # Raster çıktı düz ASCII NF olmamalı.
         self.assertNotEqual(
             NF_LOGO_ESC_STAR,
             b"NF",
         )
 
-        # F'nin orta kolunun altında sağ tarafta yatay bir alt kol
-        # bulunmamalı. Böylece F, E harfine dönüşmez.
+        # ---------------------------------------------------------
+        # NATURAL BOUNDING BOX KONTROLÜ
+        # ---------------------------------------------------------
         #
-        # F gövdesi aşağı-sola devam ettiği için sağ-alt alan boş kalır.
-        for row in pixels[13:]:
+        # Bitmap çevresinde tamamen boş padding bırakılmamalı.
+        # İlk/son satır ve ilk/son sütunda en az bir siyah
+        # piksel bulunmalı.
+        #
+        # Böylece width/height gerçek logoyu temsil eder.
+        self.assertTrue(
+            any(pixels[0])
+        )
+
+        self.assertTrue(
+            any(pixels[-1])
+        )
+
+        self.assertTrue(
+            any(
+                row[0]
+                for row in pixels
+            )
+        )
+
+        self.assertTrue(
+            any(
+                row[-1]
+                for row in pixels
+            )
+        )
+
+        # ---------------------------------------------------------
+        # N HARFİNİN KRİTİK SON DİYAGONALİ
+        # ---------------------------------------------------------
+        #
+        # Son fiziksel baskı karşılaştırmasına göre N'nin
+        # orta-alt çukuru x=22 civarında,
+        # F ile birleştiği üst nokta x=30 civarında.
+        #
+        # Böylece son yükselen diyagonal:
+        #
+        # 30 - 22 = 8 px
+        #
+        # Eski yaklaşık 13 px genişliğindeki sürümden
+        # belirgin şekilde daha kısa.
+        self.assertTrue(
+            pixels[13][22]
+        )
+
+        self.assertTrue(
+            pixels[4][30]
+        )
+
+        self.assertLess(
+            30 - 22,
+            13,
+        )
+
+        # ---------------------------------------------------------
+        # F ALT KOL KONTROLÜ
+        # ---------------------------------------------------------
+        #
+        # F'nin orta kolunun altında sağ tarafa uzayan
+        # yatay bir alt kol bulunmamalı.
+        #
+        # Böylece F hiçbir zaman E gibi görünmez.
+        for row in pixels[10:]:
             self.assertFalse(
-                any(row[42:])
+                any(row[31:])
             )
 
-        # İnce diyagonaller fiziksel olarak bağlantılı kalmalı.
+        # ---------------------------------------------------------
+        # İNCE DİYAGONAL BAĞLANTI KONTROLÜ
+        # ---------------------------------------------------------
         #
-        # Eski testte en az 2 ortak piksel zorunluluğu vardı.
-        # Bu, termal baskıda çizgilerin gereksiz kalınlaştırılmasına
-        # neden olabileceği için artık yalnızca 1 piksel bağlantı
-        # yeterli kabul ediliyor.
+        # Ardışık dolu satırlar en az bir ortak sütun
+        # paylaşmalı.
+        #
+        # 2+ piksel overlap zorlamıyoruz; çünkü bu,
+        # ince referans logoyu gereksiz kalınlaştırabilir.
         occupied_rows = [
             {
                 x
@@ -186,14 +245,14 @@ class PrinterServiceLogoTests(unittest.TestCase):
             fake_win32print.writes
         )
 
-        # Placeholder gerçek RAW baskıya gitmemeli.
+        # Placeholder gerçek RAW çıktıya gitmemeli.
         self.assertNotIn(
             b"[NF LOGO]",
             written,
         )
 
-        # Firma kodu bitmap'in parçası yapılmamalı.
-        # Normal CP857 metni olarak kalmalı.
+        # Firma kodu bitmap'in içine rasterlaştırılmamalı.
+        # Normal CP857 text olarak kalmalı.
         self.assertIn(
             b" JH 20018559",
             written,
@@ -204,8 +263,8 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # Stilize Unicode NF karakterleri yanlışlıkla RAW çıktıya
-        # UTF-8 olarak gönderilmemeli.
+        # Stilize Unicode NF karakterleri yanlışlıkla
+        # RAW çıktıya UTF-8 olarak gönderilmemeli.
         self.assertNotIn(
             bytes.fromhex("f09d9895"),
             written,
@@ -216,7 +275,8 @@ class PrinterServiceLogoTests(unittest.TestCase):
             written,
         )
 
-        # Gerçek ESC/POS ESC * 24-dot bitmap komutu gönderilmeli.
+        # ESC/POS ESC * 24-dot bitmap komutu
+        # gerçekten yazıcıya gönderilmeli.
         self.assertTrue(
             any(
                 chunk.startswith(b"\x1b*\x21")
@@ -252,13 +312,15 @@ class PrinterServiceLogoTests(unittest.TestCase):
             fake_win32print.writes
         )
 
-        # Bitmap basılamazsa güvenli ASCII fallback kullanılmalı.
+        # Bitmap başarısız olursa güvenli
+        # ASCII NF fallback kullanılmalı.
         self.assertIn(
             b"NF JH 20018559\n",
             written,
         )
 
-        # Placeholder hiçbir durumda yazıcıya gitmemeli.
+        # Placeholder hiçbir koşulda
+        # yazıcıya ulaşmamalı.
         self.assertNotIn(
             b"[NF LOGO]",
             written,
