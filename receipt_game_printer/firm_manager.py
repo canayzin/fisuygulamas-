@@ -14,6 +14,10 @@ class Firm:
     phone2: str
     website: str
     tax_office: str
+    trade_registry_no: str
+    eku_no: str
+    z_no: str
+    footer_logo_code: str
     game_code: str
     default_product: str
     default_vat: float
@@ -25,11 +29,11 @@ class Firm:
 
 
 DEFAULT_FIRMS = [
-    Firm("A TAMIRCISI", "YEDEK PARCA", "M SINAN MAH USKUDAR CD NO:59", "", "0216 111 11 11", "", "", "", "OYK-001", "YEDEK PARCA", 20.0, 3750.0),
-    Firm("B MARKET", "MARKET ALISVERISI", "ATATURK CAD NO:11", "", "0216 222 22 22", "", "", "", "OYK-002", "MARKET URUNU", 10.0, 420.0),
-    Firm("C BENZINLIK", "AKARYAKIT", "CEVRE YOLU KM 5", "", "0216 333 33 33", "", "", "", "OYK-003", "AKARYAKIT", 20.0, 1250.0),
-    Firm("D ECZANE", "ILAC", "SAGLIK SOK NO:8", "", "0216 444 44 44", "", "", "", "OYK-004", "ILAC", 10.0, 890.0),
-    Firm("E RESTORAN", "YEMEK", "LEZZET CAD NO:27", "", "0216 555 55 55", "", "", "", "OYK-005", "YEMEK SERVISI", 10.0, 640.0),
+    Firm("A TAMIRCISI", "YEDEK PARCA", "M SINAN MAH USKUDAR CD NO:59", "", "0216 111 11 11", "", "", "", "", "", "", "", "OYK-001", "YEDEK PARCA", 20.0, 3750.0),
+    Firm("B MARKET", "MARKET ALISVERISI", "ATATURK CAD NO:11", "", "0216 222 22 22", "", "", "", "", "", "", "", "OYK-002", "MARKET URUNU", 10.0, 420.0),
+    Firm("C BENZINLIK", "AKARYAKIT", "CEVRE YOLU KM 5", "", "0216 333 33 33", "", "", "", "", "", "", "", "OYK-003", "AKARYAKIT", 20.0, 1250.0),
+    Firm("D ECZANE", "ILAC", "SAGLIK SOK NO:8", "", "0216 444 44 44", "", "", "", "", "", "", "", "OYK-004", "ILAC", 10.0, 890.0),
+    Firm("E RESTORAN", "YEMEK", "LEZZET CAD NO:27", "", "0216 555 55 55", "", "", "", "", "", "", "", "OYK-005", "YEMEK SERVISI", 10.0, 640.0),
 ]
 
 
@@ -44,6 +48,10 @@ def firm_from_dict(item: dict) -> Firm:
         phone2=item.get("phone2", ""),
         website=item.get("website", ""),
         tax_office=item.get("tax_office", ""),
+        trade_registry_no=item.get("trade_registry_no", ""),
+        eku_no=item.get("eku_no", ""),
+        z_no=item.get("z_no", ""),
+        footer_logo_code=item.get("footer_logo_code", ""),
         game_code=item.get("game_code", ""),
         default_product=item.get("default_product", ""),
         default_vat=float(item.get("default_vat", 20.0)),
