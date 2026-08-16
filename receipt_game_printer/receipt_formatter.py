@@ -103,6 +103,7 @@ def _format_product_line(
     product = data.product_name[
         : max(width - 14, 8)
     ]
+
     vat = f"%{int(data.vat_rate)}"
     amount_col = amount_text[-10:]
 

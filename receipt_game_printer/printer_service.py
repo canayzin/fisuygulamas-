@@ -18,6 +18,7 @@ except ImportError:
 # "." = boş piksel
 #
 # Bu blok tek aktif NF logo implementasyonudur.
+# PNG / Pillow / Unicode / harici font kullanılmaz.
 # ---------------------------------------------------------------------------
 
 NF_LOGO_BITMAP = (
@@ -246,6 +247,10 @@ class PrinterService:
     ) -> None:
         """
         [NF LOGO] placeholder'ını CP857'e çevrilmeden önce yakalar.
+
+        Placeholder yazıcıya metin olarak gönderilmez.
+        NF bitmap olarak basılır.
+        Firma kodu ise bitmap'ten sonra CP857 text olarak kalır.
         """
 
         lines = content.splitlines()
@@ -262,6 +267,8 @@ class PrinterService:
                     .strip()
                 )
 
+                # Eski formatlarda firma kodu bir sonraki
+                # satırda bulunabiliyorsa onu da destekle.
                 if (
                     not footer_logo_code
                     and index + 1 < len(lines)
@@ -319,10 +326,14 @@ class PrinterService:
         footer_logo_code: str = "",
     ) -> bool:
         """
-        NF bitmap logosunu RAW olarak basar.
+        NF bitmap logosunu RAW ESC/POS olarak basar.
 
         Firma kodu bitmap içine gömülmez.
-        Logodan sonra normal CP857 metni olarak gönderilir.
+        NF logosundan hemen sonra aynı satırda
+        normal CP857 metni olarak gönderilir.
+
+        Bitmap basımı başarısız olursa False döner;
+        çağıran kod ASCII NF fallback kullanabilir.
         """
 
         if not NF_LOGO_ESC_STAR:
@@ -335,16 +346,20 @@ class PrinterService:
         )
 
         try:
+            # Center alignment
             win32print.WritePrinter(
                 h_printer,
                 b"\x1ba\x01",
             )
 
+            # Embedded NF bitmap
             win32print.WritePrinter(
                 h_printer,
                 NF_LOGO_ESC_STAR,
             )
 
+            # Firma kodu bitmap değildir.
+            # CP857 text olarak aynı satırda devam eder.
             if code:
                 win32print.WritePrinter(
                     h_printer,
@@ -354,6 +369,7 @@ class PrinterService:
                     ),
                 )
 
+            # Satırı bitir ve sola hizalamaya dön.
             win32print.WritePrinter(
                 h_printer,
                 b"\n\x1ba\x00",
