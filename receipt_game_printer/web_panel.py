@@ -13,6 +13,7 @@ from firm_manager import FirmManager
 from printer_service import PrinterService
 from receipt_formatter import ReceiptData, build_receipt_text
 from template_manager import TemplateManager
+from vat_engine import validate_text_receipt_vat
 
 BASE_DIR = Path(__file__).resolve().parent
 FIRMS_JSON = BASE_DIR / "firms.json"
@@ -92,6 +93,7 @@ def run_print_job(job_id: str, printer_name: str, receipt_texts: list[str]):
             if print_jobs[job_id]["stopped"]:
                 break
         try:
+            validate_text_receipt_vat(text)
             printer_service.print_raw(printer_name, text)
         except Exception:
             with job_lock:

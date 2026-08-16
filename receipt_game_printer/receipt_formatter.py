@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from textwrap import wrap
 
-from template_manager import ReceiptTemplate, default_template, validate_template
 from receipt_styles import (
     ReceiptBlock,
     StyledReceipt,
@@ -13,6 +12,8 @@ from receipt_styles import (
     resolve_role_styles,
     template_with_style_visibility,
 )
+from template_manager import ReceiptTemplate, default_template, validate_template
+from vat_engine import calculate_vat
 
 
 RECEIPT_WIDTH = 32
@@ -53,11 +54,6 @@ def format_money(value: float) -> str:
     return f"*{formatted}"
 
 
-def calculate_vat(amount: float, vat_rate: float) -> float:
-    """KDV dahil brüt tutar içindeki KDV payını hesapla."""
-    return amount * vat_rate / (100 + vat_rate)
-
-
 def center(
     text: str,
     width: int = RECEIPT_WIDTH,
@@ -71,6 +67,8 @@ def left_right(
     width: int = RECEIPT_WIDTH,
 ) -> str:
     left = left[:width]
+    right = right[:width]
+
     space = width - len(left) - len(right)
 
     if space < 1:
@@ -116,8 +114,14 @@ def _format_product_line(
         2,
     )
 
-    left_gap = max(middle_width // 2, 1)
-    right_gap = max(middle_width - left_gap, 1)
+    left_gap = max(
+        middle_width // 2,
+        1,
+    )
+    right_gap = max(
+        middle_width - left_gap,
+        1,
+    )
 
     return (
         f"{product}"
@@ -131,20 +135,46 @@ def _format_product_line(
 def _contact_lines(
     data: ReceiptData,
     template: ReceiptTemplate,
-) -> list[str]:
-    lines: list[str] = []
+) -> list[tuple[str, str]]:
+    """
+    İletişim satırlarını metin + ayrı rol olarak döndürür.
+
+    Tasarım Stüdyosu'nda phone1 / phone2 / website / tax_office alanlarının
+    birbirinden bağımsız düzenlenebilmesi için rol bilgisi burada korunur.
+    """
+    lines: list[tuple[str, str]] = []
 
     if template.show_phone and data.phone1:
-        lines.append(f"TEL: {data.phone1}")
+        lines.append(
+            (
+                f"TEL: {data.phone1}",
+                "phone1",
+            )
+        )
 
     if template.show_phone2 and data.phone2:
-        lines.append(f"TEL 2: {data.phone2}")
+        lines.append(
+            (
+                f"TEL 2: {data.phone2}",
+                "phone2",
+            )
+        )
 
     if template.show_website and data.website:
-        lines.append(f"WEB: {data.website}")
+        lines.append(
+            (
+                f"WEB: {data.website}",
+                "website",
+            )
+        )
 
     if template.show_tax_office and data.tax_office:
-        lines.append(data.tax_office)
+        lines.append(
+            (
+                data.tax_office,
+                "tax_office",
+            )
+        )
 
     return lines
 
@@ -153,34 +183,67 @@ def _address_lines(
     data: ReceiptData,
     template: ReceiptTemplate,
     width: int,
-) -> list[str]:
-    source = [
-        line
-        for line in (
-            data.address_line1,
-            data.address_line2,
-        )
-        if line
-    ] or (
-        [data.address]
-        if data.address
-        else []
-    )
+) -> list[tuple[str, str]]:
+    """
+    Adres satırlarını ayrı address_line1/address_line2 rolleriyle üretir.
 
-    if not template.wrap_address:
-        return [
-            _fit_line(line, width)
-            for line in source
-        ]
+    Wrap sonucu birden fazla fiziksel satır oluşsa bile ilk kaynak adres
+    address_line1, ikinci kaynak adres address_line2 rolünü korur.
+    """
+    source: list[tuple[str, str]] = []
 
-    lines: list[str] = []
-
-    for line in source:
-        lines.extend(
-            _wrap_line(line, width)
+    if data.address_line1:
+        source.append(
+            (
+                data.address_line1,
+                "address_line1",
+            )
         )
 
-    return lines
+    if data.address_line2:
+        source.append(
+            (
+                data.address_line2,
+                "address_line2",
+            )
+        )
+
+    if not source and data.address:
+        source.append(
+            (
+                data.address,
+                "address_line1",
+            )
+        )
+
+    rows: list[tuple[str, str]] = []
+
+    for text, role in source:
+        if template.wrap_address:
+            wrapped = _wrap_line(
+                text,
+                width,
+            )
+
+            rows.extend(
+                (
+                    line,
+                    role,
+                )
+                for line in wrapped
+            )
+        else:
+            rows.append(
+                (
+                    _fit_line(
+                        text,
+                        width,
+                    ),
+                    role,
+                )
+            )
+
+    return rows
 
 
 def _format_receipt_no(
@@ -250,11 +313,24 @@ def build_receipt_blocks(
     validate_template(template)
 
     width = template.width
-    vat_amount = calculate_vat(data.amount, data.vat_rate)
-    separator_char = (template.separator_char or ".")[0]
+
+    # KDV için tek source of truth vat_engine.calculate_vat'tır.
+    vat_amount = calculate_vat(
+        data.amount,
+        data.vat_rate,
+    )
+
+    separator_char = (
+        template.separator_char
+        or "."
+    )[0]
+
     separator = separator_char * min(
         width,
-        max(width - 2, 1),
+        max(
+            width - 2,
+            1,
+        ),
     )
 
     blocks: list[ReceiptBlock] = []
@@ -280,59 +356,85 @@ def build_receipt_blocks(
             "header",
         )
 
-    if template.header_lines and not template.header_compact:
-        add("", "separator")
+    if (
+        template.header_lines
+        and not template.header_compact
+    ):
+        add(
+            "",
+            "separator",
+        )
 
     for text, role in (
-        (data.firm_name, "firm_name"),
-        (data.sector, "sector"),
+        (
+            data.firm_name,
+            "firm_name",
+        ),
+        (
+            data.sector,
+            "sector",
+        ),
     ):
         if not text:
             continue
 
         add(
-            center(text, width)
+            center(
+                text,
+                width,
+            )
             if template.center_firm_name
-            else _fit_line(text, width),
+            else _fit_line(
+                text,
+                width,
+            ),
             role,
         )
 
-    for text in _address_lines(
+    for text, role in _address_lines(
         data,
         template,
         width,
     ):
         add(
-            center(text, width)
+            center(
+                text,
+                width,
+            )
             if template.center_firm_name
-            else _fit_line(text, width),
-            "address",
-        )
-
-    for text in _contact_lines(
-        data,
-        template,
-    ):
-        if text == data.tax_office:
-            role = "tax_office"
-        elif text.startswith("TEL"):
-            role = "phone"
-        elif text.startswith("WEB:"):
-            role = "website"
-        else:
-            role = "phone"
-
-        add(
-            center(text, width)
-            if template.center_firm_name
-            else _fit_line(text, width),
+            else _fit_line(
+                text,
+                width,
+            ),
             role,
         )
 
-    add("", "separator")
+    for text, role in _contact_lines(
+        data,
+        template,
+    ):
+        add(
+            center(
+                text,
+                width,
+            )
+            if template.center_firm_name
+            else _fit_line(
+                text,
+                width,
+            ),
+            role,
+        )
 
     add(
-        data.dt.strftime("%d-%m-%Y"),
+        "",
+        "separator",
+    )
+
+    add(
+        data.dt.strftime(
+            "%d-%m-%Y"
+        ),
         "date",
     )
 
@@ -348,12 +450,17 @@ def build_receipt_blocks(
             "receipt_no",
         )
 
-    add("", "separator")
+    add(
+        "",
+        "separator",
+    )
 
     add(
         _format_product_line(
             data,
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         ),
         "product",
@@ -361,14 +468,16 @@ def build_receipt_blocks(
 
     add(
         separator,
-        "product",
+        "separator1",
     )
 
     if template.show_vat:
         add(
             left_right(
                 "TOPKDV",
-                format_money(vat_amount),
+                format_money(
+                    vat_amount
+                ),
                 width,
             ),
             "vat",
@@ -377,7 +486,9 @@ def build_receipt_blocks(
     add(
         left_right(
             "TOPLAM",
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         ),
         "total",
@@ -385,13 +496,15 @@ def build_receipt_blocks(
 
     add(
         separator,
-        "total",
+        "separator2",
     )
 
     add(
         left_right(
             data.payment_type,
-            format_money(data.amount),
+            format_money(
+                data.amount
+            ),
             width,
         ),
         "payment",
@@ -438,7 +551,9 @@ def build_receipt_blocks(
         ValueError,
         IndexError,
     ):
-        eku_text = f"EKU NO: {eku_no}"
+        eku_text = (
+            f"EKU NO: {eku_no}"
+        )
 
     add(
         left_right(
@@ -453,7 +568,10 @@ def build_receipt_blocks(
         template.show_footer
         and template.footer_lines
     ):
-        add("", "separator")
+        add(
+            "",
+            "separator",
+        )
 
         for footer in template.footer_lines:
             add(
@@ -474,7 +592,10 @@ def build_receipt_blocks(
             "footer_logo",
         )
 
-    add("", "separator")
+    add(
+        "",
+        "separator",
+    )
 
     return blocks
 
@@ -492,20 +613,190 @@ def build_receipt_text(
     )
 
 
+def _split_studio_blocks(
+    blocks: list[ReceiptBlock],
+) -> list[ReceiptBlock]:
+    """
+    Tasarım Stüdyosu için birleşik satırları bağımsız düzenlenebilir rollere ayırır.
+
+    Düz metin/legacy receipt çıktısı değişmez; bu ayrıştırma yalnızca styled
+    receipt üretiminde uygulanır.
+    """
+    split_blocks: list[ReceiptBlock] = []
+
+    split_roles = {
+        "vat": (
+            "vat_label",
+            "vat_amount",
+        ),
+        "total": (
+            "total_label",
+            "total_amount",
+        ),
+        "payment": (
+            "payment_type",
+            "payment_amount",
+        ),
+    }
+
+    for block in blocks:
+        # Ürün satırı:
+        # PRODUCT       %20       *5.000,00
+        if (
+            block.role == "product"
+            and "%" in block.text
+            and "*" in block.text
+        ):
+            percent = block.text.find("%")
+            star = block.text.rfind("*")
+
+            if (
+                percent >= 0
+                and star > percent
+            ):
+                split_blocks.extend(
+                    [
+                        ReceiptBlock(
+                            block.text[:percent],
+                            "product_name",
+                            TextStyle(),
+                        ),
+                        ReceiptBlock(
+                            block.text[percent:star],
+                            "vat_rate",
+                            TextStyle(),
+                        ),
+                        ReceiptBlock(
+                            block.text[star:],
+                            "product_amount",
+                            TextStyle(),
+                        ),
+                    ]
+                )
+                continue
+
+        # EKU/Z satırı ayrı label/value rollerine bölünür.
+        if (
+            block.role == "eku_z"
+            and "Z NO:" in block.text
+        ):
+            z_at = block.text.find(
+                "Z NO:"
+            )
+
+            left = block.text[:z_at]
+            z_text = block.text[z_at:]
+
+            eku_colon = left.find(":")
+            z_colon = z_text.find(":")
+
+            if (
+                eku_colon >= 0
+                and z_colon >= 0
+            ):
+                split_blocks.extend(
+                    [
+                        ReceiptBlock(
+                            left[: eku_colon + 1],
+                            "eku_label",
+                            TextStyle(),
+                        ),
+                        ReceiptBlock(
+                            left[eku_colon + 1 :],
+                            "eku_value",
+                            TextStyle(),
+                        ),
+                        ReceiptBlock(
+                            z_text[: z_colon + 1],
+                            "z_label",
+                            TextStyle(),
+                        ),
+                        ReceiptBlock(
+                            z_text[z_colon + 1 :],
+                            "z_value",
+                            TextStyle(),
+                        ),
+                    ]
+                )
+                continue
+
+        # Finansal label/value satırları ayrı ayrı düzenlenebilir.
+        if (
+            block.role in split_roles
+            and "*" in block.text
+        ):
+            label_role, amount_role = (
+                split_roles[
+                    block.role
+                ]
+            )
+
+            star = block.text.rfind(
+                "*"
+            )
+
+            split_blocks.append(
+                ReceiptBlock(
+                    block.text[:star],
+                    label_role,
+                    TextStyle(),
+                )
+            )
+
+            split_blocks.append(
+                ReceiptBlock(
+                    block.text[star:],
+                    amount_role,
+                    TextStyle(),
+                )
+            )
+
+            continue
+
+        split_blocks.append(
+            block
+        )
+
+    return split_blocks
+
+
 def build_styled_receipt(
     data: ReceiptData,
     template: ReceiptTemplate,
     overrides: dict | None = None,
 ) -> StyledReceipt:
-    effective_template = template_with_style_visibility(
-        template,
-        overrides,
+    effective_template = (
+        template_with_style_visibility(
+            template,
+            overrides,
+        )
     )
 
     blocks = build_receipt_blocks(
         data,
         effective_template,
     )
+
+    # Gelişmiş stüdyo: label/value ve ürün alt rollerini bağımsızlaştır.
+    blocks = _split_studio_blocks(
+        blocks
+    )
+
+    # Custom text rolü, style layer'ın override içeriğini uygulayabilmesi için
+    # yalnızca gerçekten tanımlandığında eklenir.
+    if (
+        overrides
+        and overrides.get(
+            "custom_text"
+        )
+    ):
+        blocks.append(
+            ReceiptBlock(
+                "",
+                "custom_text",
+                TextStyle(),
+            )
+        )
 
     styles = resolve_role_styles(
         effective_template,

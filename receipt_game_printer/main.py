@@ -41,6 +41,7 @@ from receipt_styles import FirmReceiptStyleStore
 from style_studio import FirmReceiptStudioFrame
 from template_editor import TemplateEditorFrame
 from template_manager import TemplateManager, validate_template
+from vat_engine import validated_print
 
 BASE_DIR = Path(__file__).resolve().parent
 FIRMS_JSON = BASE_DIR / "firms.json"
@@ -623,24 +624,29 @@ class App:
         styled = build_styled_receipt(data, template, overrides)
         return styled.plain_text(), styled
 
-    def _build_studio_preview(self, firm: Firm, overrides: dict):
+    def _build_studio_preview(self, firm: Firm, overrides: dict, sample: dict | None = None):
+        sample = sample or {}
+        sample_dt = datetime.strptime(sample.get("date", "16.08.2026"), "%d.%m.%Y") if sample.get("date") else datetime.now()
         data = self._build_receipt_data(
-            123, datetime.now(), firm=firm, amount=5000.0,
-            product_name="ORNEK URUN", vat_rate=firm.default_vat, payment_type="NAKIT",
+            int(sample.get("receipt_no", 123)), sample_dt, firm=firm, amount=float(sample.get("amount", 5000.0)),
+            product_name="ORNEK URUN", vat_rate=float(sample.get("vat_rate", firm.default_vat)),
+            payment_type=sample.get("payment_type", "NAKIT"),
         )
         return build_styled_receipt(data, self.receipt_template, overrides)
 
-    def _studio_test_print(self, firm: Firm, overrides: dict):
+    def _studio_test_print(self, firm: Firm, overrides: dict, logo_only: bool = False):
         try:
             printer = self._validate_printer()
             receipt = self._build_studio_preview(firm, overrides)
+            if logo_only:
+                receipt = type(receipt)(tuple(block for block in receipt.blocks if block.role == "footer_logo"), receipt.width)
         except ValueError as exc:
             messagebox.showerror("Tasarım Test Baskısı", str(exc))
             return
 
         def worker():
             try:
-                self.printer_service.print_raw(printer, receipt)
+                validated_print(self.printer_service, printer, receipt, 5000.0, firm.default_vat)
                 self.root.after(0, lambda: messagebox.showinfo(
                     "Tasarım Test Baskısı", "Test fişi basıldı; production history ve fiş numarası değişmedi."
                 ))
@@ -664,7 +670,7 @@ class App:
             firm = self._current_firm()
             data = self._build_receipt_data(receipt_no, self._single_receipt_datetime(), firm=firm)
             text, printable = self._receipt_outputs(data, firm)
-            self.printer_service.print_raw(printer, printable)
+            validated_print(self.printer_service, printer, printable, data.amount, data.vat_rate)
             self.print_history.record_printed((firm_identity(firm), receipt_no))
             self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{receipt_no:06d}.txt", text)
             self.update_preview()
@@ -1136,7 +1142,7 @@ class App:
                         vat_rate=vat_rate, payment_type=context["payment_type"],
                     )
                     text, printable = self._receipt_outputs(data, job.firm, context["template"])
-                    self.printer_service.print_raw(printer, printable)
+                    validated_print(self.printer_service, printer, printable, data.amount, data.vat_rate)
                     self.print_history.record_printed(job.pair_key)
                     self.failure_store.resolve(job.pair_key)
                     session["successful_count"] += 1
@@ -1268,6 +1274,7 @@ class App:
             batch_active=self.batch_lock.locked(), pending_active=bool(self.pending_store.load().get("pending")),
             template_validator=lambda: validate_template(self.receipt_template),
             bitmap_ready=bool(NF_LOGO_ESC_STAR), dry_run=dry_run,
+            vat_checks=((item.amount, self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"), None) for item in plan),
         )
         used = self.print_history.load_pairs()
         duplicate_count = sum(1 for item in plan if item.job.pair_key in used)
@@ -1522,7 +1529,7 @@ class App:
                         vat_rate=vat_rate, payment_type=settings["payment_type"],
                     )
                     text, printable = self._receipt_outputs(data, job.firm, template)
-                    self.printer_service.print_raw(printer, printable)
+                    validated_print(self.printer_service, printer, printable, data.amount, data.vat_rate)
                     self.print_history.record_printed(job.pair_key)
                     self.failure_store.resolve(job.pair_key)
                     self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{job.receipt_no:06d}.txt", text)

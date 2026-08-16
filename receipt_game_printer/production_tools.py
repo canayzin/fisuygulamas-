@@ -7,7 +7,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Callable, Iterable, Sequence
 
 from complete_batch import FirmReceiptJob, PairKey, firm_identity
-from receipt_formatter import calculate_vat
+from vat_engine import calculate_vat
+from vat_engine import validate_vat_integrity
 
 
 def valid_step_values(minimum: float, maximum: float, step: int | None) -> list[float]:
@@ -215,7 +216,7 @@ def run_preflight(
     maximum_amount: float, step_mode: int | None, max_per_firm: int | None,
     excluded_count: int, history_loader: Callable[[], set[PairKey]], batch_active: bool,
     pending_active: bool, template_validator: Callable[[], None], bitmap_ready: bool,
-    dry_run: bool = False,
+    dry_run: bool = False, vat_checks: Iterable[tuple[float, float, float | None]] = (),
 ) -> PreflightResult:
     result = PreflightResult()
     if not firms:
@@ -253,6 +254,13 @@ def run_preflight(
         result.warnings.append("Bazı firmalarda alt logo kodu boş")
     if excluded_count:
         result.info.append(f"Hariç tutulan firma: {excluded_count}")
+    try:
+        for amount, rate, rendered in vat_checks:
+            validate_vat_integrity(amount, rate, rendered)
+    except ValueError as exc:
+        result.errors.append(str(exc))
+    else:
+        result.info.append("KDV hesaplama bütünlüğü doğrulandı")
     result.info.append(f"Planlanan fiş: {requested_count}")
     return result
 

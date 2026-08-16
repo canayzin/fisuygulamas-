@@ -498,194 +498,64 @@ class SessionStore:
             "preflight_summary": {},
             "financial_summary": {},
             "dry_run": False,
-
-            # Firma bazlı fiş tasarım sistemi schema/profile sürümü.
-            "style_profile_version": 1,
+            "style_profile_version": 2,
         }
-
-        sessions = (
-            self.store.load()
-        )
-
-        sessions.append(
-            session
-        )
-
-        self.store.save(
-            sessions
-        )
-
+        sessions = self.store.load()
+        sessions.append(session)
+        self.store.save(sessions)
         return session
 
-    def update(
-        self,
-        session: dict,
-    ) -> None:
-        sessions = (
-            self.store.load()
-        )
-
-        for index, item in enumerate(
-            sessions
-        ):
-            if (
-                item.get(
-                    "session_id"
-                )
-                == session[
-                    "session_id"
-                ]
-            ):
+    def update(self, session: dict) -> None:
+        sessions = self.store.load()
+        for index, item in enumerate(sessions):
+            if item.get("session_id") == session["session_id"]:
                 sessions[index] = session
                 break
-
         else:
-            sessions.append(
-                session
-            )
+            sessions.append(session)
+        self.store.save(sessions)
 
-        self.store.save(
-            sessions
-        )
-
-    def list(
-        self,
-    ) -> list[dict]:
-        return (
-            self.store.load()
-        )
+    def list(self) -> list[dict]:
+        return self.store.load()
 
 
 class PendingBatchStore:
-    def __init__(
-        self,
-        path: Path,
-    ):
-        self.store = AtomicJsonStore(
-            path,
-            {},
-        )
+    def __init__(self, path: Path):
+        self.store = AtomicJsonStore(path, {})
 
-    def save(
-        self,
-        session_id: str,
-        mode: str,
-        jobs: Sequence[FirmReceiptJob],
-        allow_reprint: bool = False,
-    ) -> None:
-        self.store.save(
-            {
-                "session_id": session_id,
-                "mode": mode,
-                "allow_reprint": allow_reprint,
-                "pending": [
-                    [
-                        job.firm_id,
-                        job.receipt_no,
-                    ]
-                    for job in jobs
-                ],
-            }
-        )
+    def save(self, session_id: str, mode: str, jobs: Sequence[FirmReceiptJob], allow_reprint: bool = False) -> None:
+        self.store.save({"session_id": session_id, "mode": mode,
+                         "allow_reprint": allow_reprint,
+                         "pending": [[job.firm_id, job.receipt_no] for job in jobs]})
 
-    def load(
-        self,
-    ) -> dict:
-        return (
-            self.store.load()
-        )
+    def load(self) -> dict:
+        return self.store.load()
 
-    def clear(
-        self,
-    ) -> None:
-        self.store.save(
-            {}
-        )
+    def clear(self) -> None:
+        self.store.save({})
 
 
 class PrintRecordStore:
-    """
-    Arama için metadata index'i.
+    """Search metadata index; successful-pair truth remains PrintHistory."""
 
-    Başarılı `(firm_id, receipt_no)` çiftleri için
-    source of truth olmaya devam eden yapı PrintHistory'dir.
+    def __init__(self, path: Path):
+        self.store = AtomicJsonStore(path, [])
 
-    Bu store yalnızca:
-    - tarih
-    - tutar
-    - KDV
-    - session
-    - baskı modu
-    - reprint metadata
+    def append(self, record: dict) -> None:
+        records = self.store.load()
+        records.append(record)
+        self.store.save(records)
 
-    gibi gelişmiş arama alanlarını tutar.
-    """
-
-    def __init__(
-        self,
-        path: Path,
-    ):
-        self.store = AtomicJsonStore(
-            path,
-            [],
-        )
-
-    def append(
-        self,
-        record: dict,
-    ) -> None:
-        records = (
-            self.store.load()
-        )
-
-        records.append(
-            record
-        )
-
-        self.store.save(
-            records
-        )
-
-    def list(
-        self,
-    ) -> list[dict]:
-        return (
-            self.store.load()
-        )
+    def list(self) -> list[dict]:
+        return self.store.load()
 
 
-def remove_jobs(
-    jobs: Sequence[FirmReceiptJob],
-    indexes: Iterable[int],
-) -> list[FirmReceiptJob]:
-    removed = set(
-        indexes
-    )
-
-    return [
-        job
-        for index, job in enumerate(
-            jobs
-        )
-        if index not in removed
-    ]
+def remove_jobs(jobs: Sequence[FirmReceiptJob], indexes: Iterable[int]) -> list[FirmReceiptJob]:
+    removed = set(indexes)
+    return [job for index, job in enumerate(jobs) if index not in removed]
 
 
-def filter_pending_jobs(
-    jobs: Sequence[FirmReceiptJob],
-    used_pairs: Iterable[PairKey],
-) -> list[FirmReceiptJob]:
-    """
-    Pause edilen queue yeniden başladığında,
-    başka bir yoldan tamamlanmış işleri çıkar.
-    """
-
-    used = set(
-        used_pairs
-    )
-
-    return [
-        job
-        for job in jobs
-        if job.pair_key not in used
-    ]
+def filter_pending_jobs(jobs: Sequence[FirmReceiptJob], used_pairs: Iterable[PairKey]) -> list[FirmReceiptJob]:
+    """Drop jobs completed through any route before a paused queue resumes."""
+    used = set(used_pairs)
+    return [job for job in jobs if job.pair_key not in used]
