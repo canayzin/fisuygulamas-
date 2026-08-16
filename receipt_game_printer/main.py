@@ -1480,6 +1480,8 @@ class App:
             template = self.receipt_template
             threading.Thread(target=self._run_batch, args=(printer, plan, settings, datetimes, template), daemon=True).start()
         except ValueError as exc:
+            if acquired:
+                self.batch_lock.release()
             messagebox.showerror("Hata", str(exc))
         except Exception as exc:
             if acquired:
