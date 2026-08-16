@@ -11,6 +11,7 @@ from bulk_firm_editor import ask_bulk_firms
 from advanced_batch import (
     FailureStore,
     PendingBatchStore,
+    PrintRecordStore,
     SessionStore,
     build_balanced_print_jobs,
     build_filtered_jobs,
@@ -20,14 +21,26 @@ from advanced_batch import (
     get_last_receipt_number_for_firm,
     remove_jobs,
 )
+from backup_manager import BackupManager
 from complete_batch import FirmReceiptJob, PrintHistory, build_missing_firm_receipt_jobs, firm_identity
 from date_randomizer import RandomDateTimeOptions, build_random_datetimes
 from firm_dialog import ask_firm
 from firm_manager import Firm, FirmManager
 from printer_service import PrinterService
-from receipt_formatter import ReceiptData, build_receipt_text
+from printer_service import NF_LOGO_ESC_STAR
+from production_tools import (
+    FinancialSummary,
+    PlannedReceipt,
+    build_dry_run,
+    build_normal_batch_plan,
+    run_preflight,
+    search_records,
+)
+from receipt_formatter import ReceiptData, build_receipt_text, build_styled_receipt
+from receipt_styles import FirmReceiptStyleStore
+from style_studio import FirmReceiptStudioFrame
 from template_editor import TemplateEditorFrame
-from template_manager import TemplateManager
+from template_manager import TemplateManager, validate_template
 
 BASE_DIR = Path(__file__).resolve().parent
 FIRMS_JSON = BASE_DIR / "firms.json"
@@ -37,6 +50,8 @@ PRINT_HISTORY_JSON = BASE_DIR / "print_history.json"
 PRINT_FAILURES_JSON = BASE_DIR / "print_failures.json"
 PRINT_SESSIONS_JSON = BASE_DIR / "print_sessions.json"
 PENDING_BATCH_JSON = BASE_DIR / "pending_batch.json"
+PRINT_RECORDS_JSON = BASE_DIR / "print_records.json"
+FIRM_RECEIPT_STYLES_JSON = BASE_DIR / "firm_receipt_styles.json"
 TURKISH_CHAR_WARNING = (
     "Gerçekçi ve temiz baskı için Türkçe karakter kullanmayın: "
     "Ç yerine C, Ğ yerine G, İ yerine I, Ş yerine S, Ü yerine U, Ö yerine O."
@@ -59,6 +74,17 @@ class App:
         self.failure_store = FailureStore(PRINT_FAILURES_JSON)
         self.session_store = SessionStore(PRINT_SESSIONS_JSON)
         self.pending_store = PendingBatchStore(PENDING_BATCH_JSON)
+        self.record_store = PrintRecordStore(PRINT_RECORDS_JSON)
+        self.style_store = FirmReceiptStyleStore(FIRM_RECEIPT_STYLES_JSON)
+        try:
+            self.style_store.load()
+        except ValueError as exc:
+            messagebox.showerror("Fiş Stil Dosyası Hatası", str(exc))
+        self.backup_manager = BackupManager(
+            BASE_DIR,
+            ["firms.json", "receipt_template.json", "print_history.json", "print_failures.json",
+             "print_sessions.json", "pending_batch.json", "print_records.json", "firm_receipt_styles.json"],
+        )
         self.stop_batch = False
         self.pause_event = threading.Event()
         self.pause_event.set()
@@ -91,6 +117,11 @@ class App:
         self.advanced_end_no_var = tk.StringVar(value="10")
         self.advanced_count_var = tk.StringVar(value="100")
         self.last_receipt_var = tk.StringVar(value="Son basılan fiş: yok")
+        self.step_amount_var = tk.BooleanVar(value=False)
+        self.smart_amount_var = tk.BooleanVar(value=False)
+        self.max_per_firm_var = tk.StringVar(value="")
+        self.dry_run_var = tk.BooleanVar(value=False)
+        self.excluded_firm_ids: set[str] = set()
         self.mode_var = tk.StringVar(value="Sırayla")
         self.no_repeat_var = tk.BooleanVar(value=False)
         self.amount_mode_var = tk.StringVar(value="Sabit")
@@ -150,12 +181,14 @@ class App:
         self.template_tab = ttk.Frame(self.notebook, padding=10)
         self.settings_tab = ttk.Frame(self.notebook, padding=10)
         self.advanced_tab = ttk.Frame(self.notebook, padding=10)
+        self.style_studio_tab = ttk.Frame(self.notebook, padding=4)
         self.notebook.add(self.single_tab, text="Tek Fiş")
         self.notebook.add(self.batch_tab, text="Seri Baskı")
         self.notebook.add(self.firms_tab, text="Firma Yönetimi")
         self.notebook.add(self.template_tab, text="Fiş Şablonu")
         self.notebook.add(self.settings_tab, text="Ayarlar")
         self.notebook.add(self.advanced_tab, text="Gelişmiş Seri Basım")
+        self.notebook.add(self.style_studio_tab, text="Fiş Tasarım Stüdyosu")
 
         self._build_single_tab()
         self._build_batch_tab()
@@ -163,6 +196,7 @@ class App:
         self._build_template_tab()
         self._build_settings_tab()
         self._build_advanced_tab()
+        self._build_style_studio_tab()
         self.root.after(250, self._offer_resume_pending)
 
     def _build_single_tab(self):
@@ -210,6 +244,13 @@ class App:
         ttk.Combobox(content, textvariable=self.amount_mode_var, values=["Sabit", "Rastgele", "Firma bazlı"], state="readonly").pack(fill="x")
         self._add_entry(content, "Minimum tutar", self.min_amount_var)
         self._add_entry(content, "Maksimum tutar", self.max_amount_var)
+        normal_options = ttk.LabelFrame(content, text="Normal Seri Baskı Gelişmiş Ayarları", padding=6)
+        normal_options.pack(fill="x", pady=(8, 0))
+        ttk.Checkbutton(normal_options, text="50/100 Katlı Tutarlar", variable=self.step_amount_var).pack(anchor="w")
+        ttk.Checkbutton(normal_options, text="Akıllı Tutar Dağılımı", variable=self.smart_amount_var).pack(anchor="w")
+        self._add_entry(normal_options, "Firma Başına Maksimum Fiş", self.max_per_firm_var)
+        ttk.Button(normal_options, text="Hariç Tutulan Firmalar", command=self.select_excluded_firms).pack(fill="x", pady=3)
+        ttk.Checkbutton(normal_options, text="Test Baskı / DRY RUN", variable=self.dry_run_var).pack(anchor="w")
         ttk.Label(content, text="Tarih-saat modu").pack(anchor="w")
         ttk.Combobox(
             content,
@@ -366,8 +407,21 @@ class App:
             ("Manuel Yeniden Baskı", lambda: self.show_filtered_plan(True)),
             ("Hatalı Baskılar", self.show_failures),
             ("Baskı Geçmişi / Oturumlar", self.show_sessions),
+            ("Fiş Arama", self.show_receipt_search),
+            ("Yedekler", self.show_backups),
         ]:
             ttk.Button(actions, text=label, command=command).pack(fill="x", pady=3)
+
+    def _build_style_studio_tab(self):
+        self.style_studio = FirmReceiptStudioFrame(
+            self.style_studio_tab,
+            firms_provider=lambda: self.firms,
+            template_provider=lambda: self.receipt_template,
+            store=self.style_store,
+            preview_builder=self._build_studio_preview,
+            test_print_callback=self._studio_test_print,
+        )
+        self.style_studio.pack(fill="both", expand=True)
 
     def _build_printer_controls(self, parent):
         ttk.Label(parent, text="Windows yazıcı listesi").pack(anchor="w")
@@ -450,6 +504,8 @@ class App:
             if names:
                 self.advanced_firm_list.selection_set(0, tk.END)
                 self._update_last_receipt_label()
+        if hasattr(self, "style_studio"):
+            self.style_studio.refresh_firms()
 
         if not names:
             self.update_preview()
@@ -516,7 +572,9 @@ class App:
             return
         try:
             receipt_no = int(self.receipt_no_var.get() or "1")
-            text = build_receipt_text(self._build_receipt_data(receipt_no, self._single_receipt_datetime()), self.receipt_template)
+            firm = self._current_firm()
+            data = self._build_receipt_data(receipt_no, self._single_receipt_datetime(), firm=firm)
+            text, _printable = self._receipt_outputs(data, firm)
         except Exception:
             text = "Önizleme oluşturulamadı. Firma, tutar ve KDV alanlarını kontrol edin."
         self._set_preview_text(text)
@@ -527,7 +585,10 @@ class App:
         except ValueError as exc:
             raise ValueError(error_message) from exc
 
-    def _build_receipt_data(self, receipt_no: int, dt: datetime, firm: Firm | None = None, amount: float | None = None):
+    def _build_receipt_data(
+        self, receipt_no: int, dt: datetime, firm: Firm | None = None, amount: float | None = None,
+        product_name: str | None = None, vat_rate: float | None = None, payment_type: str | None = None,
+    ):
         firm = firm or self._current_firm()
         receipt_amount = amount if amount is not None else self._parse_float(self.amount_var.get(), "Tutar sayısal olmalı")
         return ReceiptData(
@@ -547,11 +608,46 @@ class App:
             game_code=firm.game_code,
             receipt_no=receipt_no,
             dt=dt,
-            product_name=self.product_var.get().strip() or firm.default_product,
-            vat_rate=self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"),
+            product_name=product_name if product_name is not None else self.product_var.get().strip() or firm.default_product,
+            vat_rate=vat_rate if vat_rate is not None else self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"),
             amount=receipt_amount,
-            payment_type=self.pay_var.get(),
+            payment_type=payment_type if payment_type is not None else self.pay_var.get(),
         )
+
+    def _receipt_outputs(self, data: ReceiptData, firm: Firm, template=None, overrides: dict | None = None):
+        template = template or self.receipt_template
+        overrides = self.style_store.get(firm) if overrides is None else overrides
+        if not overrides:
+            text = build_receipt_text(data, template)
+            return text, text
+        styled = build_styled_receipt(data, template, overrides)
+        return styled.plain_text(), styled
+
+    def _build_studio_preview(self, firm: Firm, overrides: dict):
+        data = self._build_receipt_data(
+            123, datetime.now(), firm=firm, amount=5000.0,
+            product_name="ORNEK URUN", vat_rate=firm.default_vat, payment_type="NAKIT",
+        )
+        return build_styled_receipt(data, self.receipt_template, overrides)
+
+    def _studio_test_print(self, firm: Firm, overrides: dict):
+        try:
+            printer = self._validate_printer()
+            receipt = self._build_studio_preview(firm, overrides)
+        except ValueError as exc:
+            messagebox.showerror("Tasarım Test Baskısı", str(exc))
+            return
+
+        def worker():
+            try:
+                self.printer_service.print_raw(printer, receipt)
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Tasarım Test Baskısı", "Test fişi basıldı; production history ve fiş numarası değişmedi."
+                ))
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: messagebox.showerror("Tasarım Test Baskısı", str(e)))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _validate_printer(self) -> str:
         printer = self._selected_printer()
@@ -565,10 +661,11 @@ class App:
         try:
             printer = self._validate_printer()
             receipt_no = int(self.receipt_no_var.get())
-            data = self._build_receipt_data(receipt_no, self._single_receipt_datetime())
-            text = build_receipt_text(data, self.receipt_template)
-            self.printer_service.print_raw(printer, text)
-            self.print_history.record_printed((firm_identity(self._current_firm()), receipt_no))
+            firm = self._current_firm()
+            data = self._build_receipt_data(receipt_no, self._single_receipt_datetime(), firm=firm)
+            text, printable = self._receipt_outputs(data, firm)
+            self.printer_service.print_raw(printer, printable)
+            self.print_history.record_printed((firm_identity(firm), receipt_no))
             self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{receipt_no:06d}.txt", text)
             self.update_preview()
             messagebox.showinfo("Başarılı", "Tek fiş basıldı.")
@@ -576,26 +673,6 @@ class App:
             messagebox.showerror("Hata", str(exc))
         except Exception as exc:
             messagebox.showerror("Hata", f"Baskı gönderilemedi: {exc}")
-
-    def _pick_firm_sequence(self, count: int):
-        if not self.firms:
-            raise ValueError("Firma listesi boş")
-        mode = self.mode_var.get()
-        if mode == "Tek firma":
-            return [self._current_firm() for _ in range(count)]
-        if mode == "Sırayla":
-            return [self.firms[i % len(self.firms)] for i in range(count)]
-
-        result = []
-        prev = None
-        for _ in range(count):
-            candidates = self.firms
-            if self.no_repeat_var.get() and prev is not None and len(self.firms) > 1:
-                candidates = [firm for firm in self.firms if firm.name != prev.name]
-            firm = random.choice(candidates)
-            result.append(firm)
-            prev = firm
-        return result
 
     def _pick_amount(self, firm: Firm):
         mode = self.amount_mode_var.get()
@@ -677,6 +754,17 @@ class App:
         if not self._random_datetime_active():
             return None
         return build_random_datetimes(count, self._random_datetime_options())
+
+    def _planned_batch_datetimes(self, count: int) -> list[datetime]:
+        random_datetimes = self._batch_random_datetimes(count)
+        if random_datetimes is not None:
+            return random_datetimes
+        current = self._initial_batch_datetime()
+        values = []
+        for _ in range(count):
+            values.append(current)
+            current = self._next_dt(current)
+        return values
 
     def _initial_batch_datetime(self) -> datetime:
         if self.time_mode_var.get() == "Şu andan başlat":
@@ -955,6 +1043,28 @@ class App:
         if not jobs:
             messagebox.showinfo("Seri Baskı", "Yazdırılacak iş bulunmuyor.")
             return
+        firms = []
+        seen_ids = set()
+        for job in jobs:
+            if job.firm_id not in seen_ids:
+                seen_ids.add(job.firm_id)
+                firms.append(job.firm)
+        minimum = self._parse_float(self.min_amount_var.get(), "Minimum tutar sayısal olmalı")
+        maximum = self._parse_float(self.max_amount_var.get(), "Maksimum tutar sayısal olmalı")
+        preflight = run_preflight(
+            printer_name=self._selected_printer(), printer_exists=self.printer_service.printer_exists,
+            firms=firms, requested_count=len(jobs), start_no=min(job.receipt_no for job in jobs),
+            end_no=max(job.receipt_no for job in jobs), minimum_amount=minimum, maximum_amount=maximum,
+            step_mode=None, max_per_firm=None, excluded_count=0,
+            history_loader=self.print_history.load_pairs, batch_active=self.batch_lock.locked(),
+            pending_active=False, template_validator=lambda: validate_template(self.receipt_template),
+            bitmap_ready=bool(NF_LOGO_ESC_STAR), dry_run=False,
+        )
+        if preflight.errors:
+            messagebox.showerror("Risk Kontrolü", "\n".join(preflight.errors))
+            return
+        if preflight.warnings and not messagebox.askyesno("Risk Kontrolü", "\n".join(preflight.warnings) + "\n\nDevam edilsin mi?"):
+            return
         if not self.batch_lock.acquire(blocking=False):
             messagebox.showerror("Hata", "Başka bir seri baskı halen devam ediyor")
             return
@@ -979,20 +1089,29 @@ class App:
             self.stop_batch = False
             self.pause_event.set()
             self._set_batch_buttons_state("disabled")
+            amounts = [self._pick_amount(job.firm) for job in jobs]
+            datetimes = self._planned_batch_datetimes(len(jobs))
+            context = {
+                "product_name": self.product_var.get().strip(),
+                "vat_rate": self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"),
+                "payment_type": self.pay_var.get(),
+                "template": self.receipt_template,
+            }
             threading.Thread(
                 target=self._run_advanced_jobs,
-                args=(printer, list(jobs), session, allow_reprint, integrity_scope),
+                args=(printer, list(jobs), session, allow_reprint, integrity_scope, amounts, datetimes, context),
                 daemon=True,
             ).start()
         except Exception as exc:
             self.batch_lock.release()
             messagebox.showerror("Hata", str(exc))
 
-    def _run_advanced_jobs(self, printer: str, jobs, session: dict, allow_reprint: bool, integrity_scope=None):
+    def _run_advanced_jobs(self, printer: str, jobs, session: dict, allow_reprint: bool,
+                           integrity_scope=None, amounts=None, datetimes=None, context=None):
         pending = list(jobs)
         try:
-            random_datetimes = self._batch_random_datetimes(len(jobs))
-            dt = self._initial_batch_datetime() if random_datetimes is None else random_datetimes[0]
+            financial = FinancialSummary()
+            vat_rate = context["vat_rate"]
             self.print_count = 0
             for index, job in enumerate(jobs):
                 while not self.pause_event.wait(0.2):
@@ -1008,16 +1127,29 @@ class App:
                     pending.pop(0)
                     self.pending_store.save(session["session_id"], session["mode"], pending, allow_reprint)
                     continue
+                amount = 0.0
                 try:
-                    amount = self._pick_amount(job.firm)
-                    if random_datetimes is not None:
-                        dt = random_datetimes[index]
-                    data = self._build_receipt_data(job.receipt_no, dt, firm=job.firm, amount=amount)
-                    text = build_receipt_text(data, self.receipt_template)
-                    self.printer_service.print_raw(printer, text)
+                    amount = amounts[index]
+                    data = self._build_receipt_data(
+                        job.receipt_no, datetimes[index], firm=job.firm, amount=amount,
+                        product_name=context["product_name"] or job.firm.default_product,
+                        vat_rate=vat_rate, payment_type=context["payment_type"],
+                    )
+                    text, printable = self._receipt_outputs(data, job.firm, context["template"])
+                    self.printer_service.print_raw(printer, printable)
                     self.print_history.record_printed(job.pair_key)
                     self.failure_store.resolve(job.pair_key)
                     session["successful_count"] += 1
+                    financial.add_success(
+                        f"{session['session_id']}-{index}", job.firm_id, job.firm.name, amount, vat_rate
+                    )
+                    session["financial_summary"] = financial.as_dict()
+                    self.record_store.append({
+                        "timestamp": datetime.now().astimezone().isoformat(), "firm_id": job.firm_id,
+                        "firm_name": job.firm.name, "receipt_no": job.receipt_no, "amount": amount,
+                        "vat_rate": vat_rate, "session_id": session["session_id"], "status": "successful",
+                        "mode": session["mode"], "manual_reprint": allow_reprint,
+                    })
                     if len(session["successful_pairs"]) < 1000:
                         session["successful_pairs"].append([job.firm_id, job.receipt_no])
                     else:
@@ -1029,12 +1161,16 @@ class App:
                     self.print_count += 1
                     self.root.after(0, lambda c=self.print_count: self.counter_var.set(str(c)))
                     self.root.after(0, lambda t=text: self._set_preview_text(t))
-                    if random_datetimes is None:
-                        dt = self._next_dt(dt)
                 except Exception as exc:
                     session["failed_count"] += 1
                     session["failed_pairs"].append([job.firm_id, job.receipt_no])
                     self.failure_store.record(job.pair_key, str(exc), session["session_id"])
+                    self.record_store.append({
+                        "timestamp": datetime.now().astimezone().isoformat(), "firm_id": job.firm_id,
+                        "firm_name": job.firm.name, "receipt_no": job.receipt_no, "amount": amount,
+                        "vat_rate": vat_rate, "session_id": session["session_id"], "status": "failed",
+                        "mode": session["mode"], "manual_reprint": allow_reprint,
+                    })
                 pending.pop(0)
                 self.pending_store.save(session["session_id"], session["mode"], pending, allow_reprint)
                 self.session_store.update(session)
@@ -1068,6 +1204,7 @@ class App:
                 self.root.after(0, lambda m=message: messagebox.showinfo(
                     "Bütünlük Kontrolü", m + "\n\nSeri başarıyla tamamlandı. Eksik fiş yok."
                 ))
+            self._show_financial_summary(session["financial_summary"], session.get("reprint_count", 0))
         finally:
             self.batch_lock.release()
             self.root.after(0, lambda: self._set_batch_buttons_state("normal"))
@@ -1076,22 +1213,265 @@ class App:
         if messagebox.askyesno("Bütünlük Kontrolü", message + "\n\nEksik fişler basılsın mı?"):
             self._show_job_preview(missing_jobs, "Bütünlük Eksiklerini Tamamla", False)
 
+    def select_excluded_firms(self):
+        window = tk.Toplevel(self.root)
+        window.title("Hariç Tutulan Firmalar")
+        window.geometry("430x480")
+        listing = tk.Listbox(window, selectmode="multiple", exportselection=False)
+        listing.pack(fill="both", expand=True, padx=8, pady=8)
+        for index, firm in enumerate(self.firms):
+            listing.insert(tk.END, firm.name)
+            if firm_identity(firm) in self.excluded_firm_ids:
+                listing.selection_set(index)
+
+        def save():
+            self.excluded_firm_ids = {firm_identity(self.firms[index]) for index in listing.curselection()}
+            window.destroy()
+
+        ttk.Button(window, text="Seçimi Uygula", command=save).pack(fill="x", padx=8, pady=(0, 8))
+
+    def _normal_plan(self, count: int, start_no: int):
+        firms = [self._current_firm()] if self.mode_var.get() == "Tek firma" else list(self.firms)
+        amount_mode = self.amount_mode_var.get()
+        fixed = self._parse_float(self.amount_var.get(), "Tutar sayısal olmalı") if amount_mode == "Sabit" else None
+        if amount_mode == "Rastgele":
+            minimum = self._parse_float(self.min_amount_var.get(), "Minimum tutar sayısal olmalı")
+            maximum = self._parse_float(self.max_amount_var.get(), "Maksimum tutar sayısal olmalı")
+        elif fixed is not None:
+            minimum = maximum = fixed
+        else:
+            firm_values = [float(firm.default_amount) for firm in firms]
+            minimum, maximum = min(firm_values), max(firm_values)
+        step = 50 if self.step_amount_var.get() else None
+        if fixed is not None and step and fixed % step:
+            raise ValueError("Sabit tutar 50/100 katlı modda 50'nin katı olmalı")
+        if amount_mode == "Firma bazlı" and step and any(float(firm.default_amount) % step for firm in firms):
+            raise ValueError("Firma bazlı tutarlardan bazıları 50'nin katı değil")
+        max_per_firm = int(self.max_per_firm_var.get()) if self.max_per_firm_var.get().strip() else None
+        return build_normal_batch_plan(
+            firms, count, start_no, self.mode_var.get(), self.excluded_firm_ids, max_per_firm,
+            self.no_repeat_var.get(), minimum, maximum, step, self.smart_amount_var.get(), fixed,
+            firm_amounts=amount_mode == "Firma bazlı",
+        ), firms, minimum, maximum, max_per_firm
+
+    def _preflight_for_plan(self, plan, firms, start_no, minimum, maximum, max_per_firm, dry_run):
+        printer = self._selected_printer()
+        active_ids = {item.job.firm_id for item in plan}
+        result = run_preflight(
+            printer_name=printer,
+            printer_exists=self.printer_service.printer_exists,
+            firms=[firm for firm in firms if firm_identity(firm) in active_ids],
+            requested_count=len(plan), start_no=start_no, end_no=start_no + len(plan) - 1,
+            minimum_amount=minimum, maximum_amount=maximum,
+            step_mode=50 if self.step_amount_var.get() else None, max_per_firm=max_per_firm,
+            excluded_count=len(self.excluded_firm_ids), history_loader=self.print_history.load_pairs,
+            batch_active=self.batch_lock.locked(), pending_active=bool(self.pending_store.load().get("pending")),
+            template_validator=lambda: validate_template(self.receipt_template),
+            bitmap_ready=bool(NF_LOGO_ESC_STAR), dry_run=dry_run,
+        )
+        used = self.print_history.load_pairs()
+        duplicate_count = sum(1 for item in plan if item.job.pair_key in used)
+        if duplicate_count:
+            result.warnings.append(f"History ile çakışan pair: {duplicate_count} (normal seri mod izin verir)")
+        return result
+
+    def _estimated_summary(self, plan, preflight, minimum, maximum, max_per_firm) -> tuple[str, dict]:
+        summary = FinancialSummary()
+        vat_rate = self._parse_float(self.vat_var.get(), "KDV sayısal olmalı")
+        for index, item in enumerate(plan):
+            summary.add_success(f"estimate-{index}", item.job.firm_id, item.job.firm.name, item.amount, vat_rate)
+        totals = summary.totals()
+        firm_ids = {item.job.firm_id for item in plan}
+        used = self.print_history.load_pairs()
+        duplicate_count = sum(1 for item in plan if item.job.pair_key in used)
+        text = (
+            f"❌ Kritik hata: {len(preflight.errors)}\n⚠ Uyarı: {len(preflight.warnings)}\n"
+            f"✓ Bilgi/kontrol: {len(preflight.info)}\n\nToplam: {len(plan)}\nFirma: {len(firm_ids)}\n"
+            f"Hariç: {len(self.excluded_firm_ids)}\nFiş No: {plan[0].job.receipt_no}-{plan[-1].job.receipt_no}\n"
+            f"Tutar: {minimum:.2f}-{maximum:.2f}\n50 Katlı: {'Açık' if self.step_amount_var.get() else 'Kapalı'}\n"
+            f"Akıllı Dağılım: {'Açık' if self.smart_amount_var.get() else 'Kapalı'}\n"
+            f"Firma Başı Limit: {max_per_firm or 'Yok'}\n"
+            f"Duplicate çakışması: {duplicate_count} (normal modda atlanmaz)\n"
+            f"Tahmini Toplam: {totals['total_amount']:.2f} TL\nTahmini KDV: {totals['total_vat']:.2f} TL\n"
+            f"Firma başına yaklaşık: {len(plan) / len(firm_ids):.1f}"
+        )
+        return text, summary.as_dict()
+
+    def _show_financial_summary(self, summary: dict, reprint_count: int = 0):
+        lines = []
+        general_count = 0
+        general_amount = 0.0
+        general_vat = 0.0
+        for firm_id, item in summary.items():
+            lines.extend([item.get("firm_name", firm_id), f"Firm ID: {firm_id}",
+                          f"Fiş Adedi: {item['count']}", f"Fiş Toplamı: {item['total_amount']} TL",
+                          f"Toplam KDV: {item['total_vat']} TL", f"Ortalama: {item['average_amount']} TL", ""])
+            general_count += int(item["count"])
+            general_amount += float(item["total_amount"])
+            general_vat += float(item["total_vat"])
+        lines.extend(["GENEL TOPLAM", f"Fiş Adedi: {general_count}", f"Fiş Toplamı: {general_amount:.2f} TL",
+                      f"Toplam KDV: {general_vat:.2f} TL"])
+        if reprint_count:
+            lines.append(f"Bu toplam {reprint_count} manuel reprint içerir.")
+        self.root.after(0, lambda: messagebox.showinfo("Firma Bazlı Baskı Özeti", "\n".join(lines)))
+
+    def show_receipt_search(self):
+        window = tk.Toplevel(self.root)
+        window.title("Fiş Arama")
+        window.geometry("950x560")
+        filters = ttk.Frame(window)
+        filters.pack(fill="x", padx=8, pady=8)
+        firm_var, start_var, end_var, min_var, max_var, session_var, status_var, date_from_var, date_to_var, vat_var, mode_var, reprint_var = (
+            tk.StringVar() for _ in range(12)
+        )
+        for label, var in [("Firma / ID", firm_var), ("Başlangıç No", start_var), ("Bitiş No", end_var),
+                           ("Min Tutar", min_var), ("Max Tutar", max_var), ("Session", session_var)]:
+            ttk.Label(filters, text=label).pack(side="left")
+            ttk.Entry(filters, textvariable=var, width=10).pack(side="left", padx=(2, 6))
+        ttk.Combobox(filters, textvariable=status_var, values=["", "successful", "failed"], width=10).pack(side="left")
+        more_filters = ttk.Frame(window)
+        more_filters.pack(fill="x", padx=8)
+        for label, var in [("Tarih başlangıç", date_from_var), ("Tarih bitiş", date_to_var), ("KDV", vat_var)]:
+            ttk.Label(more_filters, text=label).pack(side="left")
+            ttk.Entry(more_filters, textvariable=var, width=12).pack(side="left", padx=(2, 6))
+        ttk.Combobox(more_filters, textvariable=mode_var,
+                     values=["", "Normal Seri Baskı", "Firma Bazlı Eksiksiz Basım", "Manuel Yeniden Baskı"],
+                     width=24).pack(side="left")
+        ttk.Combobox(more_filters, textvariable=reprint_var, values=["", "manual", "normal"], width=10).pack(side="left")
+        columns = ("date", "firm", "firm_id", "receipt", "amount", "vat", "session", "status", "mode")
+        tree = ttk.Treeview(window, columns=columns, show="headings")
+        for column in columns:
+            tree.heading(column, text=column.title())
+        tree.pack(fill="both", expand=True, padx=8, pady=8)
+
+        current_results = []
+
+        def run_search():
+            nonlocal current_results
+            tree.delete(*tree.get_children())
+            query = firm_var.get().strip()
+            kwargs = {
+                "firm_id": query if any(firm_identity(firm) == query for firm in self.firms) else None,
+                "firm": None if any(firm_identity(firm) == query for firm in self.firms) else query or None,
+                "start_no": int(start_var.get()) if start_var.get() else None,
+                "end_no": int(end_var.get()) if end_var.get() else None,
+                "min_amount": float(min_var.get()) if min_var.get() else None,
+                "max_amount": float(max_var.get()) if max_var.get() else None,
+                "session_id": session_var.get() or None, "status": status_var.get() or None,
+                "date_from": date_from_var.get() or None, "date_to": date_to_var.get() or None,
+                "vat_rate": float(vat_var.get()) if vat_var.get() else None,
+                "mode": mode_var.get() or None,
+                "manual_reprint": True if reprint_var.get() == "manual" else False if reprint_var.get() == "normal" else None,
+            }
+            current_results = search_records(self.record_store.list(), **kwargs)[:5000]
+            for index, record in enumerate(current_results):
+                tree.insert("", "end", iid=str(index), values=(record.get("timestamp", "bilinmiyor"), record.get("firm_name", "bilinmiyor"),
+                    record.get("firm_id", "bilinmiyor"), record.get("receipt_no", "bilinmiyor"), record.get("amount", "bilinmiyor"),
+                    record.get("vat_rate", "bilinmiyor"), record.get("session_id", "bilinmiyor"),
+                    record.get("status", "bilinmiyor"), record.get("mode", "bilinmiyor")))
+
+        def open_design():
+            if not tree.selection():
+                return
+            firm_id = current_results[int(tree.selection()[0])].get("firm_id")
+            if firm_id:
+                self.notebook.select(self.style_studio_tab)
+                self.style_studio.select_firm_by_id(firm_id)
+                window.destroy()
+
+        ttk.Button(filters, text="Ara", command=run_search).pack(side="right")
+        ttk.Button(more_filters, text="Fiş Tasarımını Aç", command=open_design).pack(side="right")
+        run_search()
+
+    def show_backups(self):
+        window = tk.Toplevel(self.root)
+        window.title("Yedekler")
+        window.geometry("720x450")
+        listing = tk.Listbox(window, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=8, pady=8)
+        backups = self.backup_manager.list_backups()
+        for backup in backups:
+            manifest = self.backup_manager.validate(backup)
+            size = sum(path.stat().st_size for path in backup.iterdir() if path.is_file())
+            listing.insert(tk.END, f"{manifest['created_at']} | {manifest['reason']} | {len(manifest['files'])} dosya | {size} byte")
+        controls = ttk.Frame(window)
+        controls.pack(fill="x", padx=8, pady=(0, 8))
+        def create_backup():
+            if self.batch_lock.locked():
+                messagebox.showerror("Yedek", "Aktif baskı sırasında yedek alınamaz.", parent=window)
+                return
+            self.backup_manager.create("manuel")
+            window.destroy()
+            self.show_backups()
+
+        ttk.Button(controls, text="Yeni Yedek", command=create_backup).pack(side="left")
+
+        def restore():
+            if not listing.curselection():
+                return
+            if self.batch_lock.locked():
+                messagebox.showerror("Geri Yükle", "Aktif baskı sırasında geri yükleme yapılamaz.", parent=window)
+                return
+            if messagebox.askyesno("Geri Yükle", "Mevcut durum emergency yedeklenip seçili yedek geri yüklensin mi?", parent=window):
+                self.backup_manager.restore(backups[listing.curselection()[0]])
+                messagebox.showinfo("Yedek", "Geri yükleme tamamlandı. Uygulamayı yeniden başlatın.", parent=window)
+
+        ttk.Button(controls, text="Seçili Yedeği Geri Yükle", command=restore).pack(side="right")
+
     def start_batch(self):
         acquired = False
         try:
+            count = int(self.batch_count_var.get())
+            start_no = int(self.batch_receipt_no_var.get())
+            plan, firms, minimum, maximum, max_per_firm = self._normal_plan(count, start_no)
+            dry_run = self.dry_run_var.get()
+            preflight = self._preflight_for_plan(plan, firms, start_no, minimum, maximum, max_per_firm, dry_run)
+            summary_text, estimated_financial = self._estimated_summary(plan, preflight, minimum, maximum, max_per_firm)
+            if preflight.errors:
+                messagebox.showerror("Risk Kontrolü", summary_text + "\n\n" + "\n".join(preflight.errors))
+                return
+            if dry_run:
+                dry = build_dry_run(plan, 0, preflight.warnings,
+                                    self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"))
+                dry_message = summary_text + f"\n\nPlanlanan: {len(dry.planned_jobs)}\n"
+                if dry.warnings:
+                    dry_message += "Uyarılar: " + "; ".join(dry.warnings) + "\n"
+                dry_message += "Gerçek yazıcı/history/failure/pending verisine dokunulmadı."
+                messagebox.showinfo(
+                    "DRY RUN SONUCU",
+                    dry_message,
+                )
+                self._show_dry_run_preview(dry.planned_jobs)
+                return
+            if not messagebox.askyesno(
+                "Risk Kontrolü / Dağılım Özeti",
+                summary_text + ("\n\nUyarılar:\n" + "\n".join(preflight.warnings) if preflight.warnings else "")
+                + "\n\nONAYLA VE YAZDIR?",
+            ):
+                return
             if not self.batch_lock.acquire(blocking=False):
                 raise ValueError("Başka bir seri baskı halen devam ediyor")
             acquired = True
-            self._validate_printer()
-            count = int(self.batch_count_var.get())
-            if count <= 0:
-                raise ValueError("Fiş sayısı 0'dan büyük olmalı")
-            if not self.firms:
-                raise ValueError("Firma listesi boş")
+            if count >= 100:
+                self.backup_manager.create("büyük seri baskı öncesi")
             self.stop_batch = False
             self.pause_event.set()
             self._set_batch_buttons_state("disabled")
-            threading.Thread(target=self._run_batch, args=(count,), daemon=True).start()
+            settings = {
+                "amount_step_mode": 50 if self.step_amount_var.get() else None,
+                "smart_amount_distribution": self.smart_amount_var.get(),
+                "max_per_firm": max_per_firm,
+                "excluded_firm_ids": sorted(self.excluded_firm_ids),
+                "preflight_summary": {"errors": preflight.errors, "warnings": preflight.warnings, "info": preflight.info},
+                "estimated_financial": estimated_financial,
+                "product_name": self.product_var.get().strip(),
+                "vat_rate": self._parse_float(self.vat_var.get(), "KDV sayısal olmalı"),
+                "payment_type": self.pay_var.get(),
+            }
+            printer = self._selected_printer()
+            datetimes = self._planned_batch_datetimes(len(plan))
+            template = self.receipt_template
+            threading.Thread(target=self._run_batch, args=(printer, plan, settings, datetimes, template), daemon=True).start()
         except ValueError as exc:
             if acquired:
                 self.batch_lock.release()
@@ -1101,17 +1481,29 @@ class App:
                 self.batch_lock.release()
             messagebox.showerror("Hata", f"Seri baskı başlatılamadı: {exc}")
 
-    def _run_batch(self, count: int):
+    def _show_dry_run_preview(self, plan: list[PlannedReceipt]):
+        window = tk.Toplevel(self.root)
+        window.title("DRY RUN Job Önizleme")
+        window.geometry("700x500")
+        tree = ttk.Treeview(window, columns=("order", "firm", "receipt", "amount"), show="headings")
+        for column, title in zip(("order", "firm", "receipt", "amount"), ("Sıra", "Firma", "Fiş No", "Tutar")):
+            tree.heading(column, text=title)
+        tree.pack(fill="both", expand=True, padx=8, pady=8)
+        for index, item in enumerate(plan, 1):
+            tree.insert("", "end", values=(index, item.job.firm.name, item.job.receipt_no, f"{item.amount:.2f}"))
+
+    def _run_batch(self, printer: str, plan: list[PlannedReceipt], settings: dict,
+                   datetimes: list[datetime], template):
         try:
-            printer = self._validate_printer()
-            start_no = int(self.batch_receipt_no_var.get())
-            firms = self._pick_firm_sequence(count)
-            jobs = [FirmReceiptJob(firm, firm_identity(firm), start_no + index) for index, firm in enumerate(firms)]
-            session = self.session_store.create("Normal Seri Baskı", jobs, start_no, start_no + count - 1, False)
+            jobs = [item.job for item in plan]
+            count = len(plan)
+            start_no = jobs[0].receipt_no
+            session = self.session_store.create("Normal Seri Baskı", jobs, start_no, jobs[-1].receipt_no, False)
+            session.update(settings)
             pending = list(jobs)
             self.pending_store.save(session["session_id"], session["mode"], pending)
-            random_datetimes = self._batch_random_datetimes(count)
-            dt = self._initial_batch_datetime() if random_datetimes is None else random_datetimes[0]
+            financial = FinancialSummary()
+            vat_rate = settings["vat_rate"]
 
             self.print_count = 0
             for i in range(count):
@@ -1120,18 +1512,31 @@ class App:
                         break
                 if self.stop_batch:
                     break
-                job = jobs[i]
+                item = plan[i]
+                job = item.job
                 try:
-                    amount = self._pick_amount(job.firm)
-                    if random_datetimes is not None:
-                        dt = random_datetimes[i]
-                    data = self._build_receipt_data(job.receipt_no, dt, firm=job.firm, amount=amount)
-                    text = build_receipt_text(data, self.receipt_template)
-                    self.printer_service.print_raw(printer, text)
+                    amount = item.amount
+                    data = self._build_receipt_data(
+                        job.receipt_no, datetimes[i], firm=job.firm, amount=amount,
+                        product_name=settings["product_name"] or job.firm.default_product,
+                        vat_rate=vat_rate, payment_type=settings["payment_type"],
+                    )
+                    text, printable = self._receipt_outputs(data, job.firm, template)
+                    self.printer_service.print_raw(printer, printable)
                     self.print_history.record_printed(job.pair_key)
                     self.failure_store.resolve(job.pair_key)
                     self.printer_service.save_txt(OUTPUT_DIR, f"receipt_{job.receipt_no:06d}.txt", text)
                     session["successful_count"] += 1
+                    financial.add_success(
+                        f"{session['session_id']}-{i}", job.firm_id, job.firm.name, amount, vat_rate
+                    )
+                    session["financial_summary"] = financial.as_dict()
+                    self.record_store.append({
+                        "timestamp": datetime.now().astimezone().isoformat(), "firm_id": job.firm_id,
+                        "firm_name": job.firm.name, "receipt_no": job.receipt_no, "amount": amount,
+                        "vat_rate": vat_rate, "session_id": session["session_id"], "status": "successful",
+                        "mode": session["mode"], "manual_reprint": False,
+                    })
                     if len(session["successful_pairs"]) < 1000:
                         session["successful_pairs"].append([job.firm_id, job.receipt_no])
                     else:
@@ -1139,12 +1544,16 @@ class App:
                     self.print_count += 1
                     self.root.after(0, lambda c=self.print_count: self.counter_var.set(str(c)))
                     self.root.after(0, lambda t=text: self._set_preview_text(t))
-                    if random_datetimes is None:
-                        dt = self._next_dt(dt)
                 except Exception as exc:
                     session["failed_count"] += 1
                     session["failed_pairs"].append([job.firm_id, job.receipt_no])
                     self.failure_store.record(job.pair_key, str(exc), session["session_id"])
+                    self.record_store.append({
+                        "timestamp": datetime.now().astimezone().isoformat(), "firm_id": job.firm_id,
+                        "firm_name": job.firm.name, "receipt_no": job.receipt_no, "amount": item.amount,
+                        "vat_rate": vat_rate, "session_id": session["session_id"], "status": "failed",
+                        "mode": session["mode"], "manual_reprint": False,
+                    })
                 pending.pop(0)
                 self.pending_store.save(session["session_id"], session["mode"], pending)
                 self.session_store.update(session)
@@ -1155,6 +1564,7 @@ class App:
             if not self.stop_batch:
                 self.pending_store.clear()
             self.root.after(0, lambda: messagebox.showinfo("Bitti", f"Seri baskı tamamlandı. Basılan: {self.print_count}"))
+            self._show_financial_summary(session["financial_summary"])
         except Exception as exc:
             self.root.after(0, lambda: messagebox.showerror("Hata", f"Baskı gönderilemedi: {exc}"))
         finally:
